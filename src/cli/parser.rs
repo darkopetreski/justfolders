@@ -1,7 +1,6 @@
 use clap::{ColorChoice, Parser};
 
 #[derive(Parser, Debug)]
-#[command(color = ColorChoice::Always)]
 pub struct CliParams {
     pub src: String,
     pub dest: String,
