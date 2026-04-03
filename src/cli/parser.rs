@@ -1,4 +1,4 @@
-use clap::{ColorChoice, Parser};
+use clap::{Parser};
 
 #[derive(Parser, Debug)]
 pub struct CliParams {
