@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -6,19 +7,11 @@ use clap::Parser;
     arg_required_else_help = true,
     version = "1.0",
     about = "JustFolders is a backup tool for creating folder snapshots without duplicating unchanged files.",
-    long_about = "JustFolders is a backup tool built on a simple idea: your data should never depend on special software to be safe.\n
-Instead of hiding files inside proprietary formats or databases, justfolders stores everything as plain directories and files. 
-Every backup is a real folder you can open, browse, copy, or restore using nothing more than standard system tools. 
-No lock-in, no decoding step, no surprises.\n
-Backups are organized as snapshots over time, using efficient hard links so unchanged files aren’t duplicated. 
-This keeps storage usage low while preserving a complete, point-in-time view of your data. 
-You get the convenience of modern snapshot backups, with the transparency of a normal filesystem.\n
-The goal is durability. Years from now—on a different machine, or even a different operating system—your backups will still be readable. 
-If you can navigate folders, you can recover your data. No agents. No proprietary formats. Just folders."
+    long_about = include_str!("long_about.txt")
 )]
 pub struct CliParams {
-    pub src: String,
-    pub dest: String,
+    pub src: PathBuf,
+    pub dest: PathBuf,
     #[arg(
         short = 'p',
         long = "port",
@@ -28,11 +21,7 @@ pub struct CliParams {
     )]
     pub ssh_port: u16,
 
-    #[arg(
-        long = "disable-logs",
-        default_value_t = false,
-        help = "Disable logging"
-    )]
+    #[arg(long = "disable-logs", help = "Disable logging")]
     pub disable_logs: bool,
 
     #[arg(
@@ -40,14 +29,9 @@ pub struct CliParams {
         help = "Directory where to put log files. [default: destination folder]",
         value_name = "DIR"
     )]
-    pub log_dir: Option<String>,
+    pub log_dir: Option<PathBuf>,
 
-    #[arg(
-        short = 'v',
-        long = "verbose",
-        default_value_t = false,
-        help = "Verbose"
-    )]
+    #[arg(short = 'v', long = "verbose", help = "Verbose")]
     pub verbose: bool,
 
     #[arg(
@@ -56,7 +40,7 @@ pub struct CliParams {
         help = "Specify the private ssh key to use",
         value_name = "FILE"
     )]
-    pub id_rsa: Option<String>,
+    pub id_rsa: Option<PathBuf>,
 
     #[arg(
         long = "rsync-get-flags",
@@ -96,6 +80,13 @@ impl CliParams {
     /// Get the cli parameters
     ///
     pub fn get() -> CliParams {
-        CliParams::parse()
+        let mut args = CliParams::parse();
+
+        // Set default value for log dir
+        if args.log_dir.is_none() {
+            args.log_dir = Some(args.dest.clone());
+        }
+
+        args
     }
 }
