@@ -60,9 +60,11 @@ pub struct CliParams {
     #[arg(
         long = "rsync-set-flags",
         help = "Set the rsync flags that are going to be used for backup.",
-        value_name = "FLAGS"
+        default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system  --itemize-changes --times --recursive --perms --owner  --group --stats --human-readable"),
+        value_name = "FLAGS",
+        hide_default_value = true,
     )]
-    pub rsync_set_flags: Option<String>,
+    pub rsync_set_flags: String,
 
     #[arg(
         long = "rsync-append-flags",
