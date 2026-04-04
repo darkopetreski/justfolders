@@ -76,7 +76,7 @@ pub struct CliParams {
 
     #[arg(
         long = "rsync-append-flags",
-        help = "Append the rsync flags",
+        help = "Append the rsync flags, multiple flags as string",
         value_name = "FLAGS"
     )]
     pub rsync_append_flags: Option<String>,
