@@ -36,6 +36,13 @@ pub struct CliParams {
     pub disable_logs: bool,
 
     #[arg(
+        long = "log-dir",
+        help = "Directory where to put log files. [default: destination folder]",
+        value_name = "FILE"
+    )]
+    pub log_dir: Option<String>,
+
+    #[arg(
         short = 'v',
         long = "verbose",
         default_value_t = false,
@@ -63,6 +70,7 @@ pub struct CliParams {
         default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system  --itemize-changes --times --recursive --perms --owner  --group --stats --human-readable"),
         value_name = "FLAGS",
         hide_default_value = true,
+        allow_hyphen_values = true // allow flags like --links
     )]
     pub rsync_set_flags: String,
 
