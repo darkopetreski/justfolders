@@ -27,6 +27,55 @@ pub struct CliParams {
         value_name = "PORT"
     )]
     pub ssh_port: u16,
+
+    #[arg(
+        long = "disable-logs",
+        default_value_t = false,
+        help = "Disable logging"
+    )]
+    pub disable_logs: bool,
+
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        default_value_t = false,
+        help = "Verbose"
+    )]
+    pub verbose: bool,
+
+    #[arg(
+        short = 'i',
+        long = "id_rsa",
+        help = "Specify the private ssh key to use",
+        value_name = "FILE"
+    )]
+    pub id_rsa: Option<String>,
+
+    #[arg(
+        long = "rsync-get-flags",
+        help = "Display the default rsync flags that are used for backup."
+    )]
+    pub rsync_get_flags: bool,
+
+    #[arg(
+        long = "rsync-set-flags",
+        help = "Set the rsync flags that are going to be used for backup.",
+        value_name = "FLAGS"
+    )]
+    pub rsync_set_flags: Option<String>,
+
+    #[arg(
+        long = "rsync-append-flags",
+        help = "Append the rsync flags",
+        value_name = "FLAGS"
+    )]
+    pub rsync_append_flags: Option<String>,
+
+    #[arg(
+        long = "delete-oldest-no-space-left",
+        help = "Delete the oldest backup to make more space when no space left occurs"
+    )]
+    pub delete_oldest_no_space_left: bool,
 }
 
 ///
