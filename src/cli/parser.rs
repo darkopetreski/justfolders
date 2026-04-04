@@ -38,7 +38,7 @@ pub struct CliParams {
     #[arg(
         long = "log-dir",
         help = "Directory where to put log files. [default: destination folder]",
-        value_name = "FILE"
+        value_name = "DIR"
     )]
     pub log_dir: Option<String>,
 
