@@ -79,7 +79,7 @@ impl CliParams {
     ///
     /// Get the cli parameters
     ///
-    pub fn get() -> CliParams {
+    pub fn from_args() -> CliParams {
         let mut args = CliParams::parse();
 
         // Set default value for log dir

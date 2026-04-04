@@ -4,6 +4,6 @@ use cli::parser::CliParams;
 
 fn main() {
     
-    let args = CliParams::get();
+    let args = CliParams::from_args();
     println!("{:?}", args);
 }
