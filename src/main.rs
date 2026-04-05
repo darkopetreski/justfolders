@@ -1,28 +1,33 @@
-mod backup;
-mod cli;
+//! JustFolders binary entry: parse CLI, handle `--rsync-get-flags`, validate the
+//! backup destination, then run rsync.
 
-use backup::backup::ensure_marker;
-use cli::parser::CliParams;
+mod core;
+
+use core::backup::Backup;
+use core::parser::CliParams;
+use core::rsync::Rsync;
 
 fn main() {
-    // Parse command-line arguments and apply any derived defaults
+    // Parse arguments with clap and apply derived defaults (e.g. log dir → dest).
     let args = CliParams::from_args();
 
-    // Handle utility mode: if `--rsync-get-flags` is provided,
-    // print the flags and exit immediately.
+    // Utility mode: print the configured rsync flags and exit. Skips backup work.
     CliParams::handle_rsync_get_flags(&args);
 
-    // Validate that the destination directory is a valid backup target
-    // by checking for the presence of the `backup.marker` file.
-    //
-    // Safe to unwrap because `clap` guarantees `dest` is present
-    // unless `--rsync-get-flags` was used (handled above).
-    if let Err(err) = ensure_marker(args.dest.as_ref().unwrap()) {
-        // Print the error message and terminate with a non-zero exit code
+    let backup = Backup::new(&args);
+
+    // Require `backup.marker` under the destination so we do not run against the wrong tree.
+    if let Err(err) = backup.ensure_marker() {
         eprintln!("{}", err);
         std::process::exit(1);
     }
 
-    // Debug output (useful during development)
-    // println!("{:?}", args);
+    // Run the rsync invocation built from CLI flags.
+    let mut rsync = Rsync::new(&args);
+    if let Err(err) = rsync.run() {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    }
+
+    // println!("{:?}", args); // uncomment to inspect parsed CLI during development
 }
