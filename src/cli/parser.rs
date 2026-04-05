@@ -32,12 +32,7 @@ pub struct CliParams {
     pub dest: Option<PathBuf>,
 
     /// SSH port used for remote connections.
-    #[arg(
-        short = 'p',
-        long = "port",
-        default_value_t = 22,
-        value_name = "PORT"
-    )]
+    #[arg(short = 'p', long = "port", default_value_t = 22, value_name = "PORT")]
     pub ssh_port: u16,
 
     /// Disable logging entirely.
@@ -86,6 +81,17 @@ pub struct CliParams {
     /// Automatically delete the oldest backup if disk space runs out.
     #[arg(long = "delete-oldest-no-space-left")]
     pub delete_oldest_no_space_left: bool,
+
+    /// Path to a file containing exclude patterns for rsync.
+    ///
+    /// The file should follow the same format as supported by rsync’s
+    /// `--exclude-from` option (one pattern per line).
+    ///
+    /// This allows excluding files or directories from the backup process.
+    ///
+    /// See: https://web.archive.org/web/20230126121643/https://sites.google.com/site/rsync2u/home/rsync-tutorial/the-exclude-from-option
+    #[arg(long = "exclude-from", value_name = "FILE")]
+    pub exclude_from: Option<String>,
 }
 
 impl CliParams {
