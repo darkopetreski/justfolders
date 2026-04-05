@@ -14,7 +14,7 @@ use std::path::PathBuf;
 #[command(
     name = "JustFolders Backup",
     arg_required_else_help = true,
-    version = "1.0",
+    version = env!("CARGO_PKG_VERSION"),
     about = "JustFolders is a backup tool for creating folder snapshots without duplicating unchanged files.",
     long_about = include_str!("long_about.txt")
 )]
