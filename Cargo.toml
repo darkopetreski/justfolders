@@ -2,6 +2,7 @@
 name = "justfolders"
 version = "0.1.0"
 edition = "2024"
+description = "JustFolders is a backup tool for creating folder snapshots without duplicating unchanged files."
 
 [dependencies]
 chrono = "0.4.44"

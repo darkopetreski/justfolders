@@ -33,5 +33,4 @@ impl Rsync {
             Err(RsyncError::NonZeroStatus { status })
         }
     }
-
 }
