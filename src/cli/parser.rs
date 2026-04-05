@@ -1,6 +1,15 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+/// Command-line interface parameters for the JustFolders backup tool.
+///
+/// This struct defines all supported CLI arguments and flags using `clap`.
+/// It supports two main modes:
+/// 1. Backup mode (requires `src` and `dest`)
+/// 2. Utility mode (`--rsync-get-flags`)
+///
+/// In backup mode, the tool creates snapshot-style backups without
+/// duplicating unchanged files.
 #[derive(Parser, Debug)]
 #[command(
     name = "JustFolders Backup",
@@ -10,83 +19,108 @@ use std::path::PathBuf;
     long_about = include_str!("long_about.txt")
 )]
 pub struct CliParams {
-    pub src: PathBuf,
-    pub dest: PathBuf,
+    /// Source directory to back up.
+    ///
+    /// Required unless `--rsync-get-flags` is used.
+    #[arg(required_unless_present = "rsync_get_flags")]
+    pub src: Option<PathBuf>,
+
+    /// Destination directory where backups will be stored.
+    ///
+    /// Required unless `--rsync-get-flags` is used.
+    #[arg(required_unless_present = "rsync_get_flags")]
+    pub dest: Option<PathBuf>,
+
+    /// SSH port used for remote connections.
     #[arg(
         short = 'p',
         long = "port",
         default_value_t = 22,
-        help = "SSH port",
         value_name = "PORT"
     )]
     pub ssh_port: u16,
 
-    #[arg(long = "disable-logs", help = "Disable logging")]
+    /// Disable logging entirely.
+    #[arg(long = "disable-logs")]
     pub disable_logs: bool,
 
-    #[arg(
-        long = "log-dir",
-        help = "Directory where to put log files. [default: destination folder]",
-        value_name = "DIR"
-    )]
+    /// Directory where log files will be stored.
+    ///
+    /// Defaults to the destination directory if not provided.
+    #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
-    #[arg(short = 'v', long = "verbose", help = "Verbose")]
+    /// Enable verbose output.
+    #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,
 
-    #[arg(
-        short = 'i',
-        long = "id_rsa",
-        help = "Specify the private ssh key to use",
-        value_name = "FILE"
-    )]
+    /// Path to the private SSH key used for authentication.
+    #[arg(short = 'i', long = "id_rsa", value_name = "FILE")]
     pub id_rsa: Option<PathBuf>,
 
-    #[arg(
-        long = "rsync-get-flags",
-        help = "Display the default rsync flags that are used for backup."
-    )]
+    /// Print the default rsync flags and exit.
+    ///
+    /// When this flag is present, `src` and `dest` are not required.
+    #[arg(long = "rsync-get-flags")]
     pub rsync_get_flags: bool,
 
+    /// Override the default rsync flags used during backup.
+    ///
+    /// Accepts a full string of flags. Hyphenated values (e.g. `--links`)
+    /// are allowed.
     #[arg(
         long = "rsync-set-flags",
-        help = "Set the rsync flags that are going to be used for backup.",
-        default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system  --itemize-changes --times --recursive --perms --owner  --group --stats --human-readable"),
+        default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable"),
         value_name = "FLAGS",
         hide_default_value = true,
-        allow_hyphen_values = true // allow flags like --links
+        allow_hyphen_values = true
     )]
     pub rsync_set_flags: String,
 
-    #[arg(
-        long = "rsync-append-flags",
-        help = "Append the rsync flags, multiple flags as string",
-        value_name = "FLAGS"
-    )]
+    /// Append additional rsync flags to the defaults.
+    ///
+    /// This does not replace the defaults, but extends them.
+    #[arg(long = "rsync-append-flags", value_name = "FLAGS")]
     pub rsync_append_flags: Option<String>,
 
-    #[arg(
-        long = "delete-oldest-no-space-left",
-        help = "Delete the oldest backup to make more space when no space left occurs"
-    )]
+    /// Automatically delete the oldest backup if disk space runs out.
+    #[arg(long = "delete-oldest-no-space-left")]
     pub delete_oldest_no_space_left: bool,
 }
 
-///
-///
-///
 impl CliParams {
+    /// Parse CLI arguments and apply post-processing logic.
     ///
-    /// Get the cli parameters
+    /// This method:
+    /// - Parses arguments using `clap`
+    /// - Applies derived defaults that depend on other arguments
     ///
+    /// Currently:
+    /// - If `log_dir` is not provided, it defaults to `dest`
     pub fn from_args() -> CliParams {
         let mut args = CliParams::parse();
 
-        // Set default value for log dir
+        // If no log directory is specified, default to destination directory
         if args.log_dir.is_none() {
-            args.log_dir = Some(args.dest.clone());
+            if let Some(ref dest) = args.dest {
+                args.log_dir = Some(dest.clone());
+            }
         }
 
         args
+    }
+
+    /// Handle the `--rsync-get-flags` utility mode.
+    ///
+    /// If enabled, prints the currently configured rsync flags
+    /// and exits the program immediately.
+    ///
+    /// This is intended as a helper/debugging feature so users can
+    /// inspect or reuse the default rsync configuration.
+    pub fn handle_rsync_get_flags(args: &CliParams) {
+        if args.rsync_get_flags {
+            println!("{}", args.rsync_set_flags);
+            std::process::exit(0);
+        }
     }
 }
