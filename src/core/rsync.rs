@@ -108,12 +108,10 @@ impl Rsync {
             cmd.args(append_flags.split_whitespace());
         }
 
-        // Verbose
-        // if params.verbose {
-        //     cmd.arg("-v");
-        // }
-
-        //TODO: use --link-dest with the previous backup
+        // If there is a previous backup, create hard links for unchanged files
+        if let Some(previous_dest) = Self::get_latest_folder(params) {
+            cmd.arg("--link-dest").arg(previous_dest);
+        }
 
         // SRC, DEST with proper error handling
         let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
@@ -143,5 +141,30 @@ impl Rsync {
         // log_dir
 
         Ok(cmd)
+    }
+
+    /// Returns the path to the `latest` subfolder inside the destination directory.
+    ///
+    /// This function checks whether `params.dest` is set:
+    /// - If `Some`, it converts the destination into a [`PathBuf`] and appends `"latest"`
+    ///   to construct the resulting path.
+    /// - If `None`, it returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - A reference to [`CliParams`] containing the optional destination path.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(PathBuf)` containing `<dest>/latest` if a destination is provided.
+    /// * `None` if `params.dest` is not set.
+    ///
+    fn get_latest_folder(params: &CliParams) -> Option<PathBuf> {
+        if let Some(d) = params.dest.clone() {
+            let dest_path: PathBuf = d.into();
+            return Some(dest_path.join("latest"));
+        }
+
+        None
     }
 }

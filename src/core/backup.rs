@@ -81,8 +81,14 @@ impl<'a> Backup<'a> {
         // in progress folder
         let in_progress_folder = dest_path.join(self.params.in_progress_folder_name());
         if !in_progress_folder.exists() {
-            return Err(BackupError::MissingInProgressFolder { path: in_progress_folder });
+            return Err(BackupError::MissingInProgressFolder {
+                path: in_progress_folder,
+            });
         }
+
+        //TODO: refactor this using get_latest_folder and get_in_progress_folder
+        //TODO: also in_progress_folder_name belongs here not in parser
+
 
         // timestamped folder
         let timestamp_folder = dest_path.join(self.now_string());
@@ -103,6 +109,25 @@ impl<'a> Backup<'a> {
 
         Ok(())
     }
+
+    // pub fn get_latest_folder(&self) -> Result<PathBuf, BackupError> {
+    //     let dest = self.params.dest.as_ref().ok_or(BackupError::MissingDest)?;
+    //     let dest_path: PathBuf = dest.clone().into();
+    //     Ok(dest_path.join("latest"))
+    // }
+
+    // pub fn get_in_progress_folder(&self) -> Result<PathBuf, BackupError> {
+    //     let dest = self.params.dest.as_ref().ok_or(BackupError::MissingDest)?;
+    //     let dest_path: PathBuf = dest.clone().into();
+    //     let in_progress_folder = dest_path.join(self.params.in_progress_folder_name());
+    //     if !in_progress_folder.exists() {
+    //         return Err(BackupError::MissingInProgressFolder {
+    //             path: in_progress_folder,
+    //         });
+    //     }
+
+    //     Ok(in_progress_folder)
+    // }
 
     /// Returns the current local date and time formatted as a compact string.
     ///
