@@ -80,7 +80,7 @@ pub struct CliParams {
     )]
     pub rsync_set_flags: String,
 
-    /// Append additional rsync flags to the defaults.
+    /// Append additional rsync flags to the defaults. Example --rsync-append-flags "-vv"
     ///
     /// This does not replace the defaults, but extends them.
     #[arg(
