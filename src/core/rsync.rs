@@ -30,20 +30,51 @@ impl Rsync {
         if !status.success() {
             return Err(RsyncError::NonZeroStatus { status });
         }
-        
+
         Ok(())
     }
 
-    fn build_cmd(params: &CliParams) -> Command {
+    fn build_cmd(params: &CliParams, subfolder: String) -> Command {
         let mut cmd = Command::new("rsync");
+
+        // Set the default or custom flags
         cmd.args(params.rsync_set_flags.split_whitespace());
-        // cmd.args(params.rsync_append_flags.iter().map(|s| s.as_str()));
-        // cmd.args(params.exclude_from.iter().map(|s| s.as_str()));
-        // cmd.args(params.rsync_get_flags.iter().map(|s| s.as_str()));
-        // cmd.args(params.rsync_set_flags.split_whitespace());
-        // cmd.args(params.rsync_append_flags.iter().map(|s| s.as_str()));
-        // cmd.args(params.exclude_from.iter().map(|s| s.as_str()));
-        // cmd.args(params.rsync_get_flags.iter().map(|s| s.as_str()));
+
+        // Add exclude from file
+        if let Some(ref file) = params.exclude_from {
+            cmd.arg("--exclude-from").arg(file);
+        }
+
+        // SSH port
+        cmd.arg("-e").arg(format!("ssh -p {}", params.ssh_port));
+        cmd.arg("--compress");
+
+        // Add additional flags
+        if let Some(ref append_flags) = params.rsync_append_flags {
+            cmd.args(append_flags.split_whitespace());
+        }
+
+        // Verbose
+        if params.verbose {
+            cmd.arg("-v");
+        }
+
+        // SRC, DEST
+        cmd.arg(params.src.as_ref().unwrap());
+        //cmd.arg(params.dest.as_ref().);
+
+        //println!("{}", params.src.clone().unwrap().to_string_lossy());
+
+        /**
+
+            pub dest: Option<PathBuf>,
+
+            pub disable_logs: bool,
+            pub log_dir: Option<PathBuf>,
+            pub id_rsa: Option<PathBuf>,
+
+
+        */
         cmd
     }
 }
