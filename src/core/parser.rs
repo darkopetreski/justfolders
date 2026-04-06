@@ -67,7 +67,7 @@ pub struct CliParams {
     #[arg(long = "rsync-get-flags")]
     pub rsync_get_flags: bool,
 
-    /// Override the default rsync flags used during backup.
+    /// Override the default rsync flags used during backup. Example --rsync-set-flags "-avh"
     ///
     /// Accepts a full string of flags. Hyphenated values (e.g. `--links`)
     /// are allowed.
