@@ -83,7 +83,11 @@ pub struct CliParams {
     /// Append additional rsync flags to the defaults.
     ///
     /// This does not replace the defaults, but extends them.
-    #[arg(long = "rsync-append-flags", value_name = "FLAGS")]
+    #[arg(
+        long = "rsync-append-flags",
+        allow_hyphen_values = true,
+        value_name = "FLAGS"
+    )]
     pub rsync_append_flags: Option<String>,
 
     /// Automatically delete the oldest backup if disk space runs out.
