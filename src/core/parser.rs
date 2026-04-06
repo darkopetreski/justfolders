@@ -168,4 +168,16 @@ impl CliParams {
 
         false
     }
+
+    /// Returns the default name for the temporary “in-progress” folder used during backups.
+    ///
+    /// This folder is used internally to store files while a backup is in progress,
+    /// typically under the destination directory. The default name is `"tmp"`.
+    ///
+    /// # Returns
+    /// A `String` containing the folder name.
+    ///
+    pub fn in_progress_folder_name(&self) -> String {
+        "tmp".to_string()
+    }
 }

@@ -8,8 +8,6 @@ use core::parser::CliParams;
 use core::rsync::Rsync;
 
 fn main() {
-    let in_progress_folder = "tmp";
-
     // Parse arguments with clap and apply derived defaults (e.g. log dir → dest).
     let args = CliParams::from_args();
 
@@ -25,7 +23,7 @@ fn main() {
     }
 
     // Run the rsync invocation built from CLI flags.
-    let mut rsync = match Rsync::new(&args, in_progress_folder.into()) {
+    let mut rsync = match Rsync::new(&args) {
         Ok(r) => r,
         Err(err) => {
             eprintln!("Failed to build rsync command: {}", err);
@@ -35,6 +33,11 @@ fn main() {
 
     if let Err(err) = rsync.run() {
         eprintln!("{}", err);
+        std::process::exit(1);
+    }
+
+    if let Err(e) = backup.move_in_progress_to_latest() {
+        eprintln!("{}", e);
         std::process::exit(1);
     }
 }

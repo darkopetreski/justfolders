@@ -39,9 +39,9 @@ impl Rsync {
     /// - `Ok(Self)` if the command was built successfully.
     /// - `Err(RsyncError)` if required parameters (`src` or `dest`) are missing.
     ///
-    pub fn new(params: &CliParams, subfolder: String) -> Result<Self, RsyncError> {
+    pub fn new(params: &CliParams) -> Result<Self, RsyncError> {
         Ok(Self {
-            cmd: Self::build_cmd(params, subfolder)?,
+            cmd: Self::build_cmd(params)?,
         })
     }
 
@@ -78,7 +78,7 @@ impl Rsync {
     /// - `RsyncError::MissingSrc` if `src` is missing.
     /// - `RsyncError::MissingDest` if `dest` is missing.
     ///
-    fn build_cmd(params: &CliParams, subfolder: String) -> Result<Command, RsyncError> {
+    fn build_cmd(params: &CliParams) -> Result<Command, RsyncError> {
         let mut cmd = Command::new("rsync");
 
         // Set the default or custom flags
@@ -118,7 +118,7 @@ impl Rsync {
         let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
 
         cmd.arg(src);
-        cmd.arg(PathBuf::from(dest).join(subfolder));
+        cmd.arg(PathBuf::from(dest).join(params.in_progress_folder_name()));
 
         // disable_logs
         // log_dir
