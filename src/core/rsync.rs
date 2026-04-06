@@ -113,16 +113,31 @@ impl Rsync {
             cmd.arg("-v");
         }
 
-
         //TODO: use --link-dest with the previous backup
-
 
         // SRC, DEST with proper error handling
         let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
         let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
 
-        cmd.arg(src);
+        // Force trailing '/' on source to always copy contents
+        let mut src_path = src.clone().to_string();
+        if !src_path.ends_with('/') {
+            src_path.push('/');
+        }
+
+        cmd.arg(src_path);
         cmd.arg(PathBuf::from(dest).join(params.in_progress_folder_name()));
+
+
+
+        // println!(
+        //     "Running rsync: {} {}",
+        //     cmd.get_program().to_string_lossy(),
+        //     cmd.get_args()
+        //         .map(|a| a.to_string_lossy().into_owned())
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
 
         //TODO implement logs in file
 
