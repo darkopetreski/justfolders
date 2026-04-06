@@ -23,7 +23,7 @@ fn main() {
     }
 
     // Run the rsync invocation built from CLI flags.
-    let mut rsync = Rsync::new(&args);
+    let mut rsync = Rsync::new(&args, "tmp".into());
     if let Err(err) = rsync.run() {
         eprintln!("{}", err);
         std::process::exit(1);
