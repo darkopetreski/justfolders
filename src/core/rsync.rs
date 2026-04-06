@@ -113,6 +113,10 @@ impl Rsync {
             cmd.arg("-v");
         }
 
+
+        // TODO: use --link-dest with the previous backup
+        
+
         // SRC, DEST with proper error handling
         let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
         let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
