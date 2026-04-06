@@ -114,8 +114,8 @@ impl Rsync {
         }
 
 
-        // TODO: use --link-dest with the previous backup
-        
+        //TODO: use --link-dest with the previous backup
+
 
         // SRC, DEST with proper error handling
         let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
@@ -123,6 +123,8 @@ impl Rsync {
 
         cmd.arg(src);
         cmd.arg(PathBuf::from(dest).join(params.in_progress_folder_name()));
+
+        //TODO implement logs in file
 
         // disable_logs
         // log_dir
