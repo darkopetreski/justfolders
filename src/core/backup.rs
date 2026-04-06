@@ -78,17 +78,17 @@ impl<'a> Backup<'a> {
         let dest = self.params.dest.as_ref().ok_or(BackupError::MissingDest)?;
         let dest_path: PathBuf = dest.clone().into();
 
-        // tmp folder
-        let tmp_folder = dest_path.join(self.params.in_progress_folder_name());
-        if !tmp_folder.exists() {
-            return Err(BackupError::MissingInProgressFolder { path: tmp_folder });
+        // in progress folder
+        let in_progress_folder = dest_path.join(self.params.in_progress_folder_name());
+        if !in_progress_folder.exists() {
+            return Err(BackupError::MissingInProgressFolder { path: in_progress_folder });
         }
 
         // timestamped folder
         let timestamp_folder = dest_path.join(self.now_string());
 
         // Move tmp -> timestamped folder
-        fs::rename(&tmp_folder, &timestamp_folder)?;
+        fs::rename(&in_progress_folder, &timestamp_folder)?;
 
         // Update latest symlink
         let latest_link = dest_path.join("latest");
