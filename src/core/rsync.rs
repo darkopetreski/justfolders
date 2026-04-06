@@ -109,9 +109,9 @@ impl Rsync {
         }
 
         // Verbose
-        if params.verbose {
-            cmd.arg("-v");
-        }
+        // if params.verbose {
+        //     cmd.arg("-v");
+        // }
 
         //TODO: use --link-dest with the previous backup
 
@@ -128,16 +128,14 @@ impl Rsync {
         cmd.arg(src_path);
         cmd.arg(PathBuf::from(dest).join(params.in_progress_folder_name()));
 
-
-
-        // println!(
-        //     "Running rsync: {} {}",
-        //     cmd.get_program().to_string_lossy(),
-        //     cmd.get_args()
-        //         .map(|a| a.to_string_lossy().into_owned())
-        //         .collect::<Vec<_>>()
-        //         .join(" ")
-        // );
+        println!(
+            "Running rsync: {} {}",
+            cmd.get_program().to_string_lossy(),
+            cmd.get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
 
         //TODO implement logs in file
 
