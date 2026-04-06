@@ -1,16 +1,27 @@
+use super::parser::CliParams;
 use std::io;
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 use thiserror::Error;
 
-use super::parser::CliParams;
-
+/// Errors that can occur when building or running an `rsync` command.
 #[derive(Debug, Error)]
 pub enum RsyncError {
+    /// Error from the underlying IO operations when executing `rsync`.
     #[error("failed to execute command: {0}")]
     Io(#[from] io::Error),
 
+    /// `rsync` exited with a non-zero status code.
     #[error("command exited unsuccessfully ({status})")]
     NonZeroStatus { status: ExitStatus },
+
+    /// Source path (`src`) is missing from the CLI parameters
+    #[error("missing source path")]
+    MissingSrc,
+
+    /// Destination path (`dest`) is missing from the CLI parameters.
+    #[error("missing destination path")]
+    MissingDest,
 }
 
 pub struct Rsync {
@@ -18,13 +29,29 @@ pub struct Rsync {
 }
 
 impl Rsync {
-    /// Builds an `rsync` invocation from parsed CLI arguments.
-    pub fn new(params: &CliParams) -> Self {
-        Self {
-            cmd: Self::build_cmd(params),
-        }
+    /// Constructs a new `Rsync` instance from parsed CLI parameters and an optional subfolder.
+    ///
+    /// # Arguments
+    /// - `params`: Reference to parsed CLI parameters.
+    /// - `subfolder`: Subfolder to append to the destination path.
+    ///
+    /// # Returns
+    /// - `Ok(Self)` if the command was built successfully.
+    /// - `Err(RsyncError)` if required parameters (`src` or `dest`) are missing.
+    ///
+    pub fn new(params: &CliParams, subfolder: String) -> Result<Self, RsyncError> {
+        Ok(Self {
+            cmd: Self::build_cmd(params, subfolder)?,
+        })
     }
 
+    /// Executes the configured `rsync` command.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the command executed successfully (exit code 0).
+    /// - `Err(RsyncError::NonZeroStatus)` if `rsync` exited with a non-zero code.
+    /// - `Err(RsyncError::Io)` if an IO error occurred while spawning the process.
+    ///
     pub fn run(&mut self) -> Result<(), RsyncError> {
         let status = self.cmd.status()?;
         if !status.success() {
@@ -34,7 +61,24 @@ impl Rsync {
         Ok(())
     }
 
-    fn build_cmd(params: &CliParams, subfolder: String) -> Command {
+    /// Builds the `rsync` `Command` from the provided CLI parameters.
+    ///
+    /// Handles:
+    /// - Default and additional flags
+    /// - `--exclude-from` file
+    /// - SSH options including port and optional private key
+    /// - Verbosity
+    /// - Source and destination paths (with subfolder appended)
+    ///
+    /// # Arguments
+    /// - `params`: CLI parameters parsed from user input.
+    /// - `subfolder`: Subfolder to append to the destination path.
+    ///
+    /// # Errors
+    /// - `RsyncError::MissingSrc` if `src` is missing.
+    /// - `RsyncError::MissingDest` if `dest` is missing.
+    ///
+    fn build_cmd(params: &CliParams, subfolder: String) -> Result<Command, RsyncError> {
         let mut cmd = Command::new("rsync");
 
         // Set the default or custom flags
@@ -45,9 +89,19 @@ impl Rsync {
             cmd.arg("--exclude-from").arg(file);
         }
 
-        // SSH port
-        cmd.arg("-e").arg(format!("ssh -p {}", params.ssh_port));
-        cmd.arg("--compress");
+        // SSH port and optional private key
+        if params.is_remote() {
+            // Start with base SSH command and port
+            let mut ssh_cmd = format!("ssh -p {}", params.ssh_port);
+
+            // If private key is provided, add -i
+            if let Some(ref key_path) = params.id_rsa {
+                ssh_cmd.push_str(&format!(" -i {}", key_path.display()));
+            }
+
+            cmd.arg("-e").arg(ssh_cmd);
+            cmd.arg("--compress");
+        }
 
         // Add additional flags
         if let Some(ref append_flags) = params.rsync_append_flags {
@@ -59,22 +113,16 @@ impl Rsync {
             cmd.arg("-v");
         }
 
-        // SRC, DEST
-        cmd.arg(params.src.as_ref().unwrap());
-        //cmd.arg(params.dest.as_ref().);
+        // SRC, DEST with proper error handling
+        let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
+        let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
 
-        //println!("{}", params.src.clone().unwrap().to_string_lossy());
+        cmd.arg(src);
+        cmd.arg(PathBuf::from(dest).join(subfolder));
 
-        /**
+        // disable_logs
+        // log_dir
 
-            pub dest: Option<PathBuf>,
-
-            pub disable_logs: bool,
-            pub log_dir: Option<PathBuf>,
-            pub id_rsa: Option<PathBuf>,
-
-
-        */
-        cmd
+        Ok(cmd)
     }
 }

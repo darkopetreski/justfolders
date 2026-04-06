@@ -32,27 +32,23 @@ impl<'a> Backup<'a> {
         Self { params }
     }
 
-    /// Ensures that the destination directory is a valid backup target.
+    /// Ensures that a backup marker file exists in the destination directory.
     ///
-    /// This function checks for the presence of a `backup.marker` file inside
-    /// the configured destination directory. The marker file acts as a safeguard to
-    /// prevent accidental operations on unintended directories (e.g. deleting
-    /// or overwriting the wrong path).
-    ///
-    /// # Returns
-    /// * `Ok(())` if the marker file exists
-    /// * `Err(BackupError)` if the destination is unset or the marker is missing
+    /// This function performs the following steps:
+    /// 1. Checks that the destination path (`self.params.dest`) is present.
+    ///    - If not, returns `BackupError::MissingDest`.
+    /// 2. Constructs the expected marker file path as `dest/backup.marker`.
+    /// 3. Checks if the marker file exists on the filesystem.
+    ///    - If the marker file is missing, returns `BackupError::MissingMarker` with the missing path.
+    /// 4. If the marker file exists, returns `Ok(())`.
     ///
     /// # Errors
-    /// See [`BackupError`].
-    ///
-    /// # Example
-    /// ```bash
-    /// touch /your/destination/backup.marker
-    /// ```
+    /// - `BackupError::MissingDest` if the destination path is not set.
+    /// - `BackupError::MissingMarker { marker_path }` if the marker file does not exist.
+    /// 
     pub fn ensure_marker(&self) -> Result<(), BackupError> {
         let dest = self.params.dest.as_ref().ok_or(BackupError::MissingDest)?;
-        let marker_path = dest.join("backup.marker");
+        let marker_path = PathBuf::from(dest).join("backup.marker");
         if !marker_path.exists() {
             return Err(BackupError::MissingMarker { marker_path });
         }
@@ -68,6 +64,7 @@ impl<'a> Backup<'a> {
     /// - human-readable
     /// - lexicographically sortable
     /// - filesystem-friendly (no spaces or special characters)
+    /// 
     fn now_string(&self) -> String {
         Local::now().format("%Y-%m-%d-%H%M%S").to_string()
     }

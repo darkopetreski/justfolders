@@ -35,13 +35,13 @@ pub struct CliParams {
     ///
     /// Required unless `--rsync-get-flags` is used.
     #[arg(required_unless_present = "rsync_get_flags")]
-    pub src: Option<PathBuf>,
+    pub src: Option<String>,
 
     /// Destination directory where backups will be stored.
     ///
     /// Required unless `--rsync-get-flags` is used.
     #[arg(required_unless_present = "rsync_get_flags")]
-    pub dest: Option<PathBuf>,
+    pub dest: Option<String>,
 
     /// SSH port used for remote connections.
     #[arg(short = 'p', long = "port", default_value_t = 22, value_name = "PORT")]
@@ -120,7 +120,7 @@ impl CliParams {
         // If no log directory is specified, default to destination directory
         if args.log_dir.is_none() {
             if let Some(ref dest) = args.dest {
-                args.log_dir = Some(dest.clone());
+                args.log_dir = Some(PathBuf::from(dest.clone()));
             }
         }
         args
@@ -138,5 +138,34 @@ impl CliParams {
             println!("{}", args.rsync_set_flags);
             std::process::exit(0);
         }
+    }
+
+    /// Checks whether either the source (`src`) or destination (`dest`) paths
+    /// represent a remote location in the form of `user@host:/path`.
+    ///
+    /// This function uses a simple heuristic:
+    /// - A remote path is assumed if it contains both `@` and `:`
+    ///
+    /// Returns `true` if either `src` or `dest` looks like a remote path,
+    /// otherwise returns `false`.
+    ///
+    /// # Notes
+    /// - Designed for rsync-style remote specifications.
+    /// - Does **not** perform full validation (e.g., IPv6 addresses with `[]` may need special handling).
+    /// - Works correctly even if `src` or `dest` is `None`.
+    pub fn is_remote(&self) -> bool {
+        if let Some(ref src) = self.src {
+            if src.contains(':') && src.contains('@') {
+                return true;
+            }
+        }
+
+        if let Some(ref dest) = self.dest {
+            if dest.contains(':') && dest.contains('@') {
+                return true;
+            }
+        }
+
+        false
     }
 }
