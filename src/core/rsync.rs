@@ -113,6 +113,7 @@ impl Rsync {
 
         // If there is a previous backup, create hard links for unchanged files
         if let Some(previous_dest) = backup.get_latest_folder() {
+            backup.ensure_latest_points_correct_folder(); // previous_dest in this context
             cmd.arg("--link-dest").arg(previous_dest);
         }
 
