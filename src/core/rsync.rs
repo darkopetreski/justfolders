@@ -116,6 +116,11 @@ impl Rsync {
             cmd.arg("--link-dest").arg(previous_dest);
         }
 
+        // Handle logging
+        if let Some(log_filename) = backup.get_log_filename() {
+            cmd.arg("--log-file").arg(log_filename);
+        }
+
         // SRC, DEST with proper error handling
         let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
         let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
@@ -137,11 +142,6 @@ impl Rsync {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-
-        //TODO implement logs in file
-
-        // disable_logs
-        // log_dir
 
         Ok(cmd)
     }

@@ -1,6 +1,6 @@
 use super::parser::CliParams;
 use chrono::Local;
-use std::fs;
+use std::fs::{self, Dir};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -193,6 +193,41 @@ impl<'a> Backup<'a> {
     pub fn get_new_timestamp_folder(&self) -> Option<PathBuf> {
         if let Some(d) = self.params.dest_path() {
             return Some(d.join(self.now_string()));
+        }
+
+        None
+    }
+
+    /// Returns the full path to the log file for the current backup run.
+    ///
+    /// The file name is based on the current timestamp (via `now_string()`),
+    /// ensuring uniqueness and chronological ordering.
+    ///
+    /// Resolution order:
+    /// 1. If logging is disabled (`disable_logs` is `true`), returns `None`.
+    /// 2. If `log_dir` is explicitly set, the log file will be created inside it.
+    /// 3. Otherwise, if a destination path is available, the log file will be placed
+    ///    under `<dest>/.logs/`.
+    /// 4. If neither is available, returns `None`.
+    ///
+    /// # Returns
+    /// - `Some(PathBuf)` containing the full path to the log file if logging is enabled.
+    /// - `None` if logging is disabled or no suitable directory is available.
+    ///
+    /// # Notes
+    /// - No directories are created automatically; the caller must ensure they exist.
+    /// - The timestamp format is defined by `now_string()` and determines file name uniqueness.
+    pub fn get_log_filename(&self) -> Option<PathBuf> {
+        if self.params.disable_logs {
+            return None;
+        }
+
+        if let Some(log_dir) = self.params.log_dir.clone() {
+            return Some(log_dir.join(self.now_string()));
+        }
+
+        if let Some(dest_path) = self.params.dest_path() {
+            return Some(dest_path.join(".logs").join(self.now_string()));
         }
 
         None
