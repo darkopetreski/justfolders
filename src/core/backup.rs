@@ -198,12 +198,7 @@ impl<'a> Backup<'a> {
         None
     }
 
-
-
     //TODO: split this into two, one get filemane, second create dir from filename when needed
-
-
-
 
     /// Returns the full path to the log file for the current backup run.
     ///
@@ -224,31 +219,59 @@ impl<'a> Backup<'a> {
     /// # Notes
     /// - No directories are created automatically; the caller must ensure they exist.
     /// - The timestamp format is defined by `now_string()` and determines file name uniqueness.
-    pub fn get_log_filename_ensure_dir_exists(&self) -> Option<PathBuf> {
+    // pub fn get_log_filename_ensure_dir_exists(&self) -> Option<PathBuf> {
+    //     if self.params.disable_logs {
+    //         return None;
+    //     }
+
+    //     if let Some(log_dir) = self.params.log_dir.clone() {
+    //         if fs::create_dir_all(&log_dir).is_err() {
+    //             return None;
+    //         }
+    //         return Some(log_dir.join(self.now_string()));
+    //     }
+
+    //     if let Some(dest_path) = self.params.dest_path() {
+    //         let log_dir = dest_path.join(".logs");
+    //         if fs::create_dir_all(&log_dir).is_err() {
+    //             return None;
+    //         }
+    //         return Some(log_dir.join(self.now_string()));
+    //     }
+
+    //     None
+    // }
+
+    /// Returns the full path to the log file if logging is enabled.
+    ///
+    /// The log file location is determined in the following order:
+    /// 1. If `disable_logs` is set, returns `None`.
+    /// 2. If a custom `log_dir` is provided, the log file is created there.
+    /// 3. Otherwise, if a destination path is available, the log file is placed
+    ///    in a `.logs` subdirectory inside it.
+    ///
+    /// The file name is generated using the current timestamp via `now_string()`.
+    ///
+    /// # Returns
+    /// - `Some(PathBuf)` containing the full log file path
+    /// - `None` if logging is disabled or no suitable directory is available
+    pub fn get_log_filename(&self) -> Option<PathBuf> {
         if self.params.disable_logs {
             return None;
         }
 
         if let Some(log_dir) = self.params.log_dir.clone() {
-            if fs::create_dir_all(&log_dir).is_err() {
-                return None;
-            }
             return Some(log_dir.join(self.now_string()));
         }
 
         if let Some(dest_path) = self.params.dest_path() {
-            let log_dir = dest_path.join(".logs");
-            if fs::create_dir_all(&log_dir).is_err() {
-                return None;
-            }
-            return Some(log_dir.join(self.now_string()));
+            return Some(dest_path.join(".logs").join(self.now_string()));
         }
 
         None
     }
 
     pub fn ensure_latest_points_correct_folder(&self) {
-
         //TODO: also case when latest is deleted, but there are backup folders
 
         if let Some(ref latest_link) = self.get_latest_folder() {
@@ -260,7 +283,6 @@ impl<'a> Backup<'a> {
                     fs::remove_file(&latest_link).unwrap();
                     std::os::unix::fs::symlink(&newest_backup, &latest_link).unwrap();
                 }
-
             }
         }
     }

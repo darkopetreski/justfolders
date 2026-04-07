@@ -1,6 +1,7 @@
 use crate::core::backup::Backup;
 
 use super::parser::CliParams;
+use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
@@ -118,7 +119,17 @@ impl Rsync {
         }
 
         // Handle logging
-        if let Some(log_filename) = backup.get_log_filename_ensure_dir_exists() {
+        // if let Some(log_filename) = backup.get_log_filename() {
+        //     if let Some(parent) = log_filename.parent() {
+        //         if fs::create_dir_all(parent).is_ok() {
+        //             cmd.arg("--log-file").arg(log_filename);
+        //         }
+        //     }
+        // }
+        if let Some(log_filename) = backup.get_log_filename()
+            && let Some(parent) = log_filename.parent()
+            && fs::create_dir_all(parent).is_ok()
+        {
             cmd.arg("--log-file").arg(log_filename);
         }
 
