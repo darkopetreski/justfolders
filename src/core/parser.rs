@@ -51,7 +51,7 @@ pub struct CliParams {
     #[arg(long = "disable-logs")]
     pub disable_logs: bool,
 
-    /// Directory where log files will be stored.
+    /// Directory where log files will be stored. Default destination/.logs
     ///
     /// Defaults to the destination directory if not provided.
     #[arg(long = "log-dir", value_name = "DIR")]
