@@ -73,7 +73,7 @@ pub struct CliParams {
     /// are allowed.
     #[arg(
         long = "rsync-set-flags",
-        default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable"),
+        default_value_t = String::from("-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete"),
         value_name = "FLAGS",
         hide_default_value = true,
         allow_hyphen_values = true
