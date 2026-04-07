@@ -136,15 +136,6 @@ impl Rsync {
 
         println!("rsync command: {:?}", cmd);
 
-        // println!(
-        //     "Running rsync: {} {}",
-        //     cmd.get_program().to_string_lossy(),
-        //     cmd.get_args()
-        //         .map(|a| a.to_string_lossy().into_owned())
-        //         .collect::<Vec<_>>()
-        //         .join(" ")
-        // );
-
         Ok(cmd)
     }
 }
