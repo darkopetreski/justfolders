@@ -1,11 +1,8 @@
 //! JustFolders binary entry: parse CLI, handle `--rsync-get-flags`, validate the
 //! backup destination, then run rsync.
-
-mod core;
-
-use core::backup::Backup;
-use core::parser::CliParams;
-use core::rsync::Rsync;
+use justfolders::core::backup::Backup;
+use justfolders::core::parser::CliParams;
+use justfolders::core::rsync::Rsync;
 
 fn main() {
     // Parse arguments with clap and apply derived defaults (e.g. log dir → dest).
