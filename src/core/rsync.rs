@@ -1,3 +1,5 @@
+use crate::core::backup::Backup;
+
 use super::parser::CliParams;
 use std::io;
 use std::path::PathBuf;
@@ -39,9 +41,10 @@ impl Rsync {
     /// - `Ok(Self)` if the command was built successfully.
     /// - `Err(RsyncError)` if required parameters (`src` or `dest`) are missing.
     ///
-    pub fn new(params: &CliParams) -> Result<Self, RsyncError> {
+    pub fn new(params: &CliParams, backup: &Backup) -> Result<Self, RsyncError> {
         Ok(Self {
-            cmd: Self::build_cmd(params)?,
+            cmd: Self::build_cmd(params, backup)?,
+            //backup: backup,
         })
     }
 
@@ -78,7 +81,7 @@ impl Rsync {
     /// - `RsyncError::MissingSrc` if `src` is missing.
     /// - `RsyncError::MissingDest` if `dest` is missing.
     ///
-    fn build_cmd(params: &CliParams) -> Result<Command, RsyncError> {
+    fn build_cmd(params: &CliParams, backup: &Backup) -> Result<Command, RsyncError> {
         let mut cmd = Command::new("rsync");
 
         // Set the default or custom flags
@@ -109,7 +112,7 @@ impl Rsync {
         }
 
         // If there is a previous backup, create hard links for unchanged files
-        if let Some(previous_dest) = Self::get_latest_folder(params) {
+        if let Some(previous_dest) = backup.get_latest_folder() {
             cmd.arg("--link-dest").arg(previous_dest);
         }
 
@@ -124,7 +127,7 @@ impl Rsync {
         }
 
         cmd.arg(src_path);
-        cmd.arg(PathBuf::from(dest).join(params.in_progress_folder_name()));
+        cmd.arg(PathBuf::from(dest).join(backup.in_progress_folder_name()));
 
         println!(
             "Running rsync: {} {}",
@@ -141,30 +144,5 @@ impl Rsync {
         // log_dir
 
         Ok(cmd)
-    }
-
-    /// Returns the path to the `latest` subfolder inside the destination directory.
-    ///
-    /// This function checks whether `params.dest` is set:
-    /// - If `Some`, it converts the destination into a [`PathBuf`] and appends `"latest"`
-    ///   to construct the resulting path.
-    /// - If `None`, it returns `None`.
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - A reference to [`CliParams`] containing the optional destination path.
-    ///
-    /// # Returns
-    ///
-    /// * `Some(PathBuf)` containing `<dest>/latest` if a destination is provided.
-    /// * `None` if `params.dest` is not set.
-    ///
-    fn get_latest_folder(params: &CliParams) -> Option<PathBuf> {
-        if let Some(d) = params.dest.clone() {
-            let dest_path: PathBuf = d.into();
-            return Some(dest_path.join("latest"));
-        }
-
-        None
     }
 }

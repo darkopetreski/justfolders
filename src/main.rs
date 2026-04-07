@@ -23,7 +23,7 @@ fn main() {
     }
 
     // Run the rsync invocation built from CLI flags.
-    let mut rsync = match Rsync::new(&args) {
+    let mut rsync = match Rsync::new(&args, &backup) {
         Ok(r) => r,
         Err(err) => {
             eprintln!("Failed to build rsync command: {}", err);

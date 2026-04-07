@@ -169,15 +169,45 @@ impl CliParams {
         false
     }
 
-    /// Returns the default name for the temporary “in-progress” folder used during backups.
+    /// Returns the source path as a [`PathBuf`], if provided.
     ///
-    /// This folder is used internally to store files while a backup is in progress,
-    /// typically under the destination directory. The default name is `"tmp"`.
+    /// This is a convenience helper that converts the raw `src` string
+    /// argument into a filesystem-friendly type.
     ///
     /// # Returns
-    /// A `String` containing the folder name.
+    /// - `Some(PathBuf)` if a source path was provided
+    /// - `None` if `src` is not set (e.g. when using `--rsync-get-flags`)
     ///
-    pub fn in_progress_folder_name(&self) -> String {
-        "tmp".to_string()
+    /// # Notes
+    /// - No validation is performed on the path.
+    /// - Remote paths (e.g. `user@host:/path`) are returned as-is and may not
+    ///   represent a valid local filesystem path.
+    // pub fn src_path(&self) -> Option<PathBuf> {
+    //     if let Some(d) = self.src.clone() {
+    //         return Some(PathBuf::from(d));
+    //     }
+
+    //     None
+    // }
+
+    /// Returns the destination path as a [`PathBuf`], if provided.
+    ///
+    /// This is a convenience helper that converts the raw `dest` string
+    /// argument into a filesystem-friendly type.
+    ///
+    /// # Returns
+    /// - `Some(PathBuf)` if a destination path was provided
+    /// - `None` if `dest` is not set (e.g. when using `--rsync-get-flags`)
+    ///
+    /// # Notes
+    /// - No validation is performed on the path.
+    /// - Remote paths (e.g. `user@host:/path`) are returned as-is and may not
+    ///   represent a valid local filesystem path.
+    pub fn dest_path(&self) -> Option<PathBuf> {
+        if let Some(d) = self.dest.clone() {
+            return Some(PathBuf::from(d));
+        }
+
+        None
     }
 }
