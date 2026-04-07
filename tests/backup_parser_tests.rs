@@ -131,6 +131,33 @@ fn move_in_progress_creates_snapshot_and_latest_symlink() {
 }
 
 #[test]
+fn move_in_progress_replaces_existing_latest_symlink() {
+    let dest_dir = TempDir::new().expect("create temp dir");
+    let params = make_params(
+        Some("/tmp/source".to_string()),
+        Some(dest_dir.path().display().to_string()),
+    );
+    let backup = Backup::new(&params);
+
+    let old_snapshot = dest_dir.path().join("old-snapshot");
+    fs::create_dir_all(&old_snapshot).expect("create old snapshot");
+    std::os::unix::fs::symlink(&old_snapshot, backup.get_latest_folder())
+        .expect("create latest symlink");
+
+    let tmp_dir = backup.get_in_progress_folder();
+    fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    fs::write(tmp_dir.join("new.txt"), "payload").expect("create tmp file");
+
+    backup
+        .move_in_progress_to_latest()
+        .expect("move should replace latest symlink");
+
+    let latest_target = fs::read_link(backup.get_latest_folder()).expect("latest link should exist");
+    assert_ne!(latest_target, old_snapshot);
+    assert!(latest_target.join("new.txt").exists());
+}
+
+#[test]
 fn parser_path_and_remote_helpers_work() {
     let local = make_params(
         Some("/home/user/src".to_string()),
@@ -151,4 +178,13 @@ fn parser_path_and_remote_helpers_work() {
         Some("user@example.com:/srv/backup".to_string()),
     );
     assert!(remote_dest.is_remote());
+}
+
+#[test]
+fn parser_handle_rsync_get_flags_noop_when_disabled() {
+    let args = make_params(
+        Some("/home/user/src".to_string()),
+        Some("/home/user/dest".to_string()),
+    );
+    CliParams::handle_rsync_get_flags(&args);
 }
