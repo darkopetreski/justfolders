@@ -41,7 +41,7 @@ jobs:
 
       # Upload artifacts
       - name: Upload compiled binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: justfolders-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/*
