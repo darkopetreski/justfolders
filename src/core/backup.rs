@@ -86,7 +86,15 @@ impl<'a> Backup<'a> {
         if latest_folder.exists() || latest_folder.is_symlink() {
             fs::remove_file(&latest_folder)?;
         }
-        std::os::unix::fs::symlink(&timestamp_folder, &latest_folder)?;
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&timestamp_folder, &latest_folder)?;
+        }
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_dir(&timestamp_folder, &latest_folder)?;
+        }
 
         Ok(())
     }
