@@ -134,14 +134,16 @@ impl Rsync {
         cmd.arg(src_path);
         cmd.arg(PathBuf::from(dest).join(backup.in_progress_folder_name()));
 
-        println!(
-            "Running rsync: {} {}",
-            cmd.get_program().to_string_lossy(),
-            cmd.get_args()
-                .map(|a| a.to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        println!("rsync command: {:?}", cmd);
+
+        // println!(
+        //     "Running rsync: {} {}",
+        //     cmd.get_program().to_string_lossy(),
+        //     cmd.get_args()
+        //         .map(|a| a.to_string_lossy().into_owned())
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
 
         Ok(cmd)
     }
