@@ -217,17 +217,24 @@ impl<'a> Backup<'a> {
     /// # Notes
     /// - No directories are created automatically; the caller must ensure they exist.
     /// - The timestamp format is defined by `now_string()` and determines file name uniqueness.
-    pub fn get_log_filename(&self) -> Option<PathBuf> {
+    pub fn get_log_filename_ensure_dir_exists(&self) -> Option<PathBuf> {
         if self.params.disable_logs {
             return None;
         }
 
         if let Some(log_dir) = self.params.log_dir.clone() {
+            if fs::create_dir_all(&log_dir).is_err() {
+                return None;
+            }
             return Some(log_dir.join(self.now_string()));
         }
 
         if let Some(dest_path) = self.params.dest_path() {
-            return Some(dest_path.join(".logs").join(self.now_string()));
+            let log_dir = dest_path.join(".logs");
+            if fs::create_dir_all(&log_dir).is_err() {
+                return None;
+            }
+            return Some(log_dir.join(self.now_string()));
         }
 
         None

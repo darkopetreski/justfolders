@@ -111,18 +111,9 @@ impl CliParams {
     ///
     /// This method:
     /// - Parses arguments using `clap`
-    /// - Applies derived defaults that depend on other arguments
     ///
-    /// Currently:
-    /// - If `log_dir` is not provided, it defaults to `dest`
     pub fn from_args() -> CliParams {
-        let mut args = CliParams::parse();
-        // If no log directory is specified, default to destination directory
-        if args.log_dir.is_none() {
-            if let Some(ref dest) = args.dest {
-                args.log_dir = Some(PathBuf::from(dest.clone()));
-            }
-        }
+        let args = CliParams::parse();
         args
     }
 

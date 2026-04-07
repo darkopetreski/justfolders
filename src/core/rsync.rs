@@ -117,7 +117,7 @@ impl Rsync {
         }
 
         // Handle logging
-        if let Some(log_filename) = backup.get_log_filename() {
+        if let Some(log_filename) = backup.get_log_filename_ensure_dir_exists() {
             cmd.arg("--log-file").arg(log_filename);
         }
 
