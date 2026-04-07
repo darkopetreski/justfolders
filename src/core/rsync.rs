@@ -3,7 +3,7 @@ use crate::core::backup::Backup;
 use super::parser::CliParams;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+//use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 use thiserror::Error;
 
@@ -18,13 +18,12 @@ pub enum RsyncError {
     #[error("command exited unsuccessfully ({status})")]
     NonZeroStatus { status: ExitStatus },
 
-    /// Source path (`src`) is missing from the CLI parameters
-    #[error("missing source path")]
-    MissingSrc,
+    // #[error("missing source path")]
+    // MissingSrc,
 
-    /// Destination path (`dest`) is missing from the CLI parameters.
-    #[error("missing destination path")]
-    MissingDest,
+    // /// Destination path (`dest`) is missing from the CLI parameters.
+    // #[error("missing destination path")]
+    // MissingDest,
 }
 
 pub struct Rsync {
@@ -125,18 +124,8 @@ impl Rsync {
             cmd.arg("--log-file").arg(log_filename);
         }
 
-        // SRC, DEST with proper error handling
-        let src = params.src.as_ref().ok_or(RsyncError::MissingSrc)?;
-        let dest = params.dest.as_ref().ok_or(RsyncError::MissingDest)?;
-
-        // Force trailing '/' on source to always copy contents
-        let mut src_path = src.clone().to_string();
-        if !src_path.ends_with('/') {
-            src_path.push('/');
-        }
-
-        cmd.arg(src_path);
-        cmd.arg(PathBuf::from(dest).join(backup.in_progress_folder_name()));
+        cmd.arg(params.src_path());
+        cmd.arg(backup.get_in_progress_folder());
 
         println!("rsync command: {:?}", cmd);
 

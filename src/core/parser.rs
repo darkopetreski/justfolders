@@ -160,47 +160,24 @@ impl CliParams {
         false
     }
 
-    /// Returns the source path as a [`PathBuf`], if provided.
+    /// Returns the source path as a `PathBuf`, ensuring it ends with a trailing slash.
     ///
-    /// This is a convenience helper that converts the raw `src` string
-    /// argument into a filesystem-friendly type.
+    /// This clones the internal `src` field, panicking if it is `None`.  
+    /// If the path does not already end with a `'/'`, one is appended.  
     ///
-    /// # Returns
-    /// - `Some(PathBuf)` if a source path was provided
-    /// - `None` if `src` is not set (e.g. when using `--rsync-get-flags`)
-    ///
-    /// # Notes
-    /// - No validation is performed on the path.
-    /// - Remote paths (e.g. `user@host:/path`) are returned as-is and may not
-    ///   represent a valid local filesystem path.
-    // pub fn src_path(&self) -> Option<PathBuf> {
-    //     if let Some(d) = self.src.clone() {
-    //         return Some(PathBuf::from(d));
-    //     }
-
-    //     None
-    // }
-
-    /// Returns the destination path as a [`PathBuf`], if provided.
-    ///
-    /// This is a convenience helper that converts the raw `dest` string
-    /// argument into a filesystem-friendly type.
+    /// # Panics
+    /// Panics if `self.src` is `None`.
     ///
     /// # Returns
-    /// - `Some(PathBuf)` if a destination path was provided
-    /// - `None` if `dest` is not set (e.g. when using `--rsync-get-flags`)
-    ///
-    /// # Notes
-    /// - No validation is performed on the path.
-    /// - Remote paths (e.g. `user@host:/path`) are returned as-is and may not
-    ///   represent a valid local filesystem path.
-    // pub fn dest_path(&self) -> Option<PathBuf> {
-    //     if let Some(d) = self.dest.clone() {
-    //         return Some(PathBuf::from(d));
-    //     }
+    /// A `PathBuf` representing the normalized source path with a trailing slash.
+    pub fn src_path(&self) -> PathBuf {
+        let mut src = self.src.clone().unwrap();
+        if !src.ends_with('/') {
+            src.push('/');
+        }
 
-    //     None
-    // }
+        src.into()
+    }
 
     /// Returns the destination path.
     ///
