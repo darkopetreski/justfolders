@@ -145,16 +145,18 @@ impl CliParams {
     /// - Does **not** perform full validation (e.g., IPv6 addresses with `[]` may need special handling).
     /// - Works correctly even if `src` or `dest` is `None`.
     pub fn is_remote(&self) -> bool {
-        if let Some(ref src) = self.src {
-            if src.contains(':') && src.contains('@') {
-                return true;
-            }
+        if let Some(ref src) = self.src
+            && src.contains(':')
+            && src.contains('@')
+        {
+            return true;
         }
 
-        if let Some(ref dest) = self.dest {
-            if dest.contains(':') && dest.contains('@') {
-                return true;
-            }
+        if let Some(ref dest) = self.dest
+            && dest.contains(':')
+            && dest.contains('@')
+        {
+            return true;
         }
 
         false

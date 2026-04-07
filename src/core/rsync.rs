@@ -17,13 +17,6 @@ pub enum RsyncError {
     /// `rsync` exited with a non-zero status code.
     #[error("command exited unsuccessfully ({status})")]
     NonZeroStatus { status: ExitStatus },
-
-    // #[error("missing source path")]
-    // MissingSrc,
-
-    // /// Destination path (`dest`) is missing from the CLI parameters.
-    // #[error("missing destination path")]
-    // MissingDest,
 }
 
 pub struct Rsync {
@@ -44,7 +37,6 @@ impl Rsync {
     pub fn new(params: &CliParams, backup: &Backup) -> Result<Self, RsyncError> {
         Ok(Self {
             cmd: Self::build_cmd(params, backup)?,
-            //backup: backup,
         })
     }
 
@@ -113,8 +105,7 @@ impl Rsync {
 
         // If there is a previous backup, create hard links for unchanged files
         if backup.get_latest_folder().exists() {
-
-            //TODO: make this 
+            //TODO: make this
             //backup.ensure_latest_points_correct_folder();
             cmd.arg("--link-dest").arg(backup.get_latest_folder());
         }
