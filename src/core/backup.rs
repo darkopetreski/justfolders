@@ -7,9 +7,8 @@ use thiserror::Error;
 /// Errors from backup workflow steps such as destination validation.
 #[derive(Debug, Error)]
 pub enum BackupError {
-    #[error("missing destination path")]
-    MissingDest,
-
+    // #[error("missing destination path")]
+    // MissingDest,
     #[error("missing backup.marker; create it with: touch {}", marker_path.display())]
     MissingMarker { marker_path: PathBuf },
 
@@ -52,8 +51,7 @@ impl<'a> Backup<'a> {
     /// - `BackupError::MissingMarker { marker_path }` if the marker file does not exist.
     ///
     pub fn ensure_marker(&self) -> Result<(), BackupError> {
-        let dest = self.params.dest.as_ref().ok_or(BackupError::MissingDest)?;
-        let marker_path = PathBuf::from(dest).join("backup.marker");
+        let marker_path = self.params.dest_path().join("backup.marker");
         if !marker_path.exists() {
             return Err(BackupError::MissingMarker { marker_path });
         }
@@ -75,22 +73,16 @@ impl<'a> Backup<'a> {
     /// - Any filesystem operation (move, symlink, remove) fails (`IoError`).
     ///
     pub fn move_in_progress_to_latest(&self) -> Result<(), BackupError> {
-        // Get the in progress folder
-        let in_progress_folder = self
-            .get_in_progress_folder()
-            .ok_or(BackupError::MissingDest)?;
-        if !in_progress_folder.exists() {
+        if !self.get_in_progress_folder().exists() {
             return Err(BackupError::MissingInProgressFolder);
         }
 
+        let timestamp_folder = self.get_new_timestamp_folder();
         // Move tmp to a new folder with a current timestamp
-        let timestamp_folder = self
-            .get_new_timestamp_folder()
-            .ok_or(BackupError::MissingDest)?;
-        fs::rename(&in_progress_folder, &timestamp_folder)?;
+        fs::rename(&self.get_in_progress_folder(), &timestamp_folder)?;
 
-        // Remove lastst symlink if exists, Create new sym link
-        let latest_folder = self.get_latest_folder().ok_or(BackupError::MissingDest)?;
+        // Remove latest symlink if exists, Create new sym link
+        let latest_folder = self.get_latest_folder();
         if latest_folder.exists() || latest_folder.is_symlink() {
             fs::remove_file(&latest_folder)?;
         }
@@ -125,122 +117,39 @@ impl<'a> Backup<'a> {
         "tmp".to_string()
     }
 
-    /// Returns the path to the `latest` subfolder inside the destination directory.
+    /// Returns the path to the “latest” folder inside the destination directory.
     ///
-    /// This function checks whether `params.dest` is set:
-    /// - If `Some`, it converts the destination into a [`PathBuf`] and appends `"latest"`
-    ///   to construct the resulting path.
-    /// - If `None`, it returns `None`.
-    ///
-    /// # Arguments
-    ///
-    /// * `params` - A reference to [`CliParams`] containing the optional destination path.
+    /// This combines the base destination path (from `dest_path()`) with the
+    /// fixed folder name `"latest"`, typically used to reference the most recent backup
+    /// or output.
     ///
     /// # Returns
-    ///
-    /// * `Some(PathBuf)` containing `<dest>/latest` if a destination is provided.
-    /// * `None` if `params.dest` is not set.
-    ///
-    pub fn get_latest_folder(&self) -> Option<PathBuf> {
-        if let Some(d) = self.params.dest_path() {
-            return Some(d.join("latest"));
-        }
-
-        None
+    /// A `PathBuf` representing the latest folder path.
+    pub fn get_latest_folder(&self) -> PathBuf {
+        self.params.dest_path().join("latest")
     }
 
-    /// Returns the path to the "in-progress" backup directory.
+    /// Returns the path to the “in-progress” folder inside the destination directory.
     ///
-    /// This directory represents the temporary location where the current
-    /// backup snapshot is being constructed before it is finalized.
-    ///
-    /// The path is derived by joining the destination directory with the
-    /// internally generated in-progress folder name.
+    /// This combines the base destination path (from `dest_path()`) with the
+    /// folder name returned by `in_progress_folder_name()`.
     ///
     /// # Returns
-    /// - `Some(PathBuf)` if a destination path is available
-    /// - `None` if `dest` is not set (e.g. when using `--rsync-get-flags`)
-    ///
-    /// # Notes
-    /// - No validation is performed on the resulting path.
-    /// - The returned path may not exist yet; callers are responsible for
-    ///   creating or managing the directory lifecycle.
-    pub fn get_in_progress_folder(&self) -> Option<PathBuf> {
-        if let Some(d) = self.params.dest_path() {
-            return Some(d.join(self.in_progress_folder_name()));
-        }
-
-        None
+    /// A `PathBuf` representing the in-progress folder path.
+    pub fn get_in_progress_folder(&self) -> PathBuf {
+        self.params.dest_path().join(self.in_progress_folder_name())
     }
 
-    /// Returns the path for a new timestamped backup snapshot directory.
+    /// Returns a new folder path inside the destination directory, named with the current timestamp.
     ///
-    /// This directory represents the final location of a completed backup
-    /// snapshot, named using the current timestamp (via `now_string()`).
-    ///
-    /// The path is constructed by joining the destination directory with
-    /// the generated timestamp string.
+    /// This combines the base destination path (from `dest_path()`) with a timestamp
+    /// string generated by `now_string()`.
     ///
     /// # Returns
-    /// - `Some(PathBuf)` if a destination path is available
-    /// - `None` if `dest` is not set (e.g. when using `--rsync-get-flags`)
-    ///
-    /// # Notes
-    /// - No validation is performed on the resulting path.
-    /// - The returned path may not exist yet; callers are responsible for
-    ///   creating the directory and ensuring timestamp uniqueness.
-    /// - The format and resolution of the timestamp depend on `now_string()`.
-    pub fn get_new_timestamp_folder(&self) -> Option<PathBuf> {
-        if let Some(d) = self.params.dest_path() {
-            return Some(d.join(self.now_string()));
-        }
-
-        None
+    /// A `PathBuf` representing the new timestamped folder.
+    pub fn get_new_timestamp_folder(&self) -> PathBuf {
+        self.params.dest_path().join(self.now_string())
     }
-
-    //TODO: split this into two, one get filemane, second create dir from filename when needed
-
-    /// Returns the full path to the log file for the current backup run.
-    ///
-    /// The file name is based on the current timestamp (via `now_string()`),
-    /// ensuring uniqueness and chronological ordering.
-    ///
-    /// Resolution order:
-    /// 1. If logging is disabled (`disable_logs` is `true`), returns `None`.
-    /// 2. If `log_dir` is explicitly set, the log file will be created inside it.
-    /// 3. Otherwise, if a destination path is available, the log file will be placed
-    ///    under `<dest>/.logs/`.
-    /// 4. If neither is available, returns `None`.
-    ///
-    /// # Returns
-    /// - `Some(PathBuf)` containing the full path to the log file if logging is enabled.
-    /// - `None` if logging is disabled or no suitable directory is available.
-    ///
-    /// # Notes
-    /// - No directories are created automatically; the caller must ensure they exist.
-    /// - The timestamp format is defined by `now_string()` and determines file name uniqueness.
-    // pub fn get_log_filename_ensure_dir_exists(&self) -> Option<PathBuf> {
-    //     if self.params.disable_logs {
-    //         return None;
-    //     }
-
-    //     if let Some(log_dir) = self.params.log_dir.clone() {
-    //         if fs::create_dir_all(&log_dir).is_err() {
-    //             return None;
-    //         }
-    //         return Some(log_dir.join(self.now_string()));
-    //     }
-
-    //     if let Some(dest_path) = self.params.dest_path() {
-    //         let log_dir = dest_path.join(".logs");
-    //         if fs::create_dir_all(&log_dir).is_err() {
-    //             return None;
-    //         }
-    //         return Some(log_dir.join(self.now_string()));
-    //     }
-
-    //     None
-    // }
 
     /// Returns the full path to the log file if logging is enabled.
     ///
@@ -264,25 +173,25 @@ impl<'a> Backup<'a> {
             return Some(log_dir.join(self.now_string()));
         }
 
-        if let Some(dest_path) = self.params.dest_path() {
-            return Some(dest_path.join(".logs").join(self.now_string()));
-        }
-
-        None
+        Some(
+            self.params
+                .dest_path()
+                .join(".logs")
+                .join(self.now_string()),
+        )
     }
 
     pub fn ensure_latest_points_correct_folder(&self) {
         //TODO: also case when latest is deleted, but there are backup folders
 
-        if let Some(ref latest_link) = self.get_latest_folder() {
-            if self.is_symlink_broken(latest_link) {
-                println!("broken symlink -------------------------------");
-                if let Some(newest_backup) = self.newest_folder(&self.params.dest_path().unwrap()) {
-                    println!("found folder {} and linking", newest_backup);
+        let latest_link = self.get_latest_folder();
+        if self.is_symlink_broken(&latest_link) {
+            println!("broken symlink -------------------------------");
+            if let Some(newest_backup) = self.newest_folder(&self.params.dest_path()) {
+                println!("found folder {} and linking", newest_backup);
 
-                    fs::remove_file(&latest_link).unwrap();
-                    std::os::unix::fs::symlink(&newest_backup, &latest_link).unwrap();
-                }
+                fs::remove_file(&latest_link).unwrap();
+                std::os::unix::fs::symlink(&newest_backup, &latest_link).unwrap();
             }
         }
     }

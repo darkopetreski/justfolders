@@ -113,19 +113,11 @@ impl Rsync {
         }
 
         // If there is a previous backup, create hard links for unchanged files
-        if let Some(previous_dest) = backup.get_latest_folder() {
-            backup.ensure_latest_points_correct_folder(); // previous_dest in this context
-            cmd.arg("--link-dest").arg(previous_dest);
+        if backup.get_latest_folder().exists() {
+            backup.ensure_latest_points_correct_folder();
+            cmd.arg("--link-dest").arg(backup.get_latest_folder());
         }
 
-        // Handle logging
-        // if let Some(log_filename) = backup.get_log_filename() {
-        //     if let Some(parent) = log_filename.parent() {
-        //         if fs::create_dir_all(parent).is_ok() {
-        //             cmd.arg("--log-file").arg(log_filename);
-        //         }
-        //     }
-        // }
         if let Some(log_filename) = backup.get_log_filename()
             && let Some(parent) = log_filename.parent()
             && fs::create_dir_all(parent).is_ok()

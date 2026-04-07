@@ -194,11 +194,22 @@ impl CliParams {
     /// - No validation is performed on the path.
     /// - Remote paths (e.g. `user@host:/path`) are returned as-is and may not
     ///   represent a valid local filesystem path.
-    pub fn dest_path(&self) -> Option<PathBuf> {
-        if let Some(d) = self.dest.clone() {
-            return Some(PathBuf::from(d));
-        }
+    // pub fn dest_path(&self) -> Option<PathBuf> {
+    //     if let Some(d) = self.dest.clone() {
+    //         return Some(PathBuf::from(d));
+    //     }
 
-        None
+    //     None
+    // }
+
+    /// Returns the destination path.
+    ///
+    /// # Panics
+    /// This function will panic if `self.dest` is `None`.
+    ///
+    /// # Returns
+    /// A `PathBuf` representing the destination path, cloned from `self.dest`.
+    pub fn dest_path(&self) -> PathBuf {
+        self.dest.clone().unwrap().into()
     }
 }
