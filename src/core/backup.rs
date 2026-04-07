@@ -1,6 +1,6 @@
 use super::parser::CliParams;
 use chrono::Local;
-use std::fs::{self, Dir};
+use std::fs::{self};
 use std::path::PathBuf;
 use thiserror::Error;
 
