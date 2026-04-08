@@ -105,8 +105,8 @@ impl Rsync {
         }
 
         // If there is a previous backup, create hard links for unchanged files
+        ensure_latest_backup_link(&backup).ok();
         if backup.get_latest_folder().exists() {
-            ensure_latest_backup_link(&backup).ok();
             cmd.arg("--link-dest").arg(backup.get_latest_folder());
         }
 
