@@ -190,59 +190,8 @@ impl<'a> Backup<'a> {
     }
 
     /// Return the params
-    /// 
+    ///
     pub fn get_params(&self) -> &CliParams {
         self.params
     }
-
-    // pub fn ensure_latest_points_correct_folder(&self) {
-    //     //TODO: also case when latest is deleted, but there are backup folders
-
-    //     let latest_link = self.get_latest_folder();
-    //     if self.is_symlink_broken(&latest_link) {
-    //         println!("broken symlink -------------------------------");
-    //         if let Some(newest_backup) = self.newest_folder(&self.params.dest_path()) {
-    //             println!("found folder {} and linking", newest_backup);
-
-    //             fs::remove_file(&latest_link).unwrap();
-    //             std::os::unix::fs::symlink(&newest_backup, &latest_link).unwrap();
-    //         }
-    //     }
-    // }
-
-    // fn is_symlink_broken(&self, path: &PathBuf) -> bool {
-    //     // First, check if path exists as a symlink
-    //     match fs::symlink_metadata(path) {
-    //         Ok(meta) => {
-    //             if meta.file_type().is_symlink() {
-    //                 // Try to follow the symlink
-    //                 fs::metadata(path).is_err()
-    //             } else {
-    //                 false // Not a symlink, so "not broken"
-    //             }
-    //         }
-    //         Err(_) => false, // Path itself doesn't exist
-    //     }
-    // }
-
-    // fn newest_folder(&self, dir: &PathBuf) -> Option<String> {
-    //     let mut folders: Vec<String> = fs::read_dir(dir)
-    //         .ok()?
-    //         .filter_map(|entry| {
-    //             let entry = entry.ok()?;
-    //             let file_type = entry.file_type().ok()?;
-    //             if file_type.is_dir() {
-    //                 Some(entry.file_name().into_string().ok()?)
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect();
-
-    //     // Sort lexicographically
-    //     folders.sort();
-
-    //     // Last one is newest
-    //     folders.pop()
-    // }
 }
