@@ -97,7 +97,7 @@ pub fn ensure_latest_backup_link(backup: &Backup) -> Result<(), BackupLinkError>
 /// # Errors
 ///
 /// Returns a `BackupLinkError::Io` if reading the directory contents fails.
-fn find_latest_backup_folder(base_dir: &PathBuf) -> Result<Option<PathBuf>, BackupLinkError> {
+pub fn find_latest_backup_folder(base_dir: &PathBuf) -> Result<Option<PathBuf>, BackupLinkError> {
     let mut backups: Vec<(String, PathBuf)> = Vec::new();
 
     for entry in fs::read_dir(base_dir)? {
