@@ -43,5 +43,5 @@ jobs:
       - name: Upload compiled binaries
         uses: actions/upload-artifact@v4
         with:
-          name: justfolders-${{ matrix.target }}
+          name: justfolders
           path: target/${{ matrix.target }}/release/*
