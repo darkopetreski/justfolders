@@ -49,6 +49,9 @@ pub fn ensure_latest_backup_link(backup: &Backup) -> Result<(), BackupLinkError>
     let latest = find_latest_backup_folder(&base_dir)?
         .ok_or_else(|| BackupLinkError::NoBackups(base_dir.clone()))?;
 
+    let latest = find_latest_backup_folder(&base_dir)?
+        .ok_or(BackupLinkError::NoBackups(base_dir.clone()))?;
+
     // Try to get metadata of the symlink itself
     let metadata = fs::symlink_metadata(&link_path).ok(); // returns Option<Metadata>
 
