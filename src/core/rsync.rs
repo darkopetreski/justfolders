@@ -4,6 +4,7 @@ use super::parser::CliParams;
 use std::fs;
 use std::io;
 //use std::path::PathBuf;
+use crate::core::latest_link::ensure_latest_backup_link;
 use std::process::{Command, ExitStatus};
 use thiserror::Error;
 
@@ -105,8 +106,7 @@ impl Rsync {
 
         // If there is a previous backup, create hard links for unchanged files
         if backup.get_latest_folder().exists() {
-            //TODO: make this
-            //backup.ensure_latest_points_correct_folder();
+            ensure_latest_backup_link(&backup).ok();
             cmd.arg("--link-dest").arg(backup.get_latest_folder());
         }
 

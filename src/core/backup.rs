@@ -189,6 +189,12 @@ impl<'a> Backup<'a> {
         )
     }
 
+    /// Return the params
+    /// 
+    pub fn get_params(&self) -> &CliParams {
+        self.params
+    }
+
     // pub fn ensure_latest_points_correct_folder(&self) {
     //     //TODO: also case when latest is deleted, but there are backup folders
 
