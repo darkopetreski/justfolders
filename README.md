@@ -19,6 +19,9 @@ Just folders.
 Backups are critical. Bugs can and do happen.
 Always keep multiple backup copies using different tools and storage locations.
 
+## Contributions
+
+By submitting a contribution (pull request), you agree that your code will be licensed under the same MIT License as this project.
 
 ## Disclaimer
 This software is provided "as is", without any warranties or guarantees of any kind.
