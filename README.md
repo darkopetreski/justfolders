@@ -10,3 +10,24 @@ The goal is durability. Years from now—on a different machine, or even a diffe
 No agents. 
 No proprietary formats.
 Just folders.
+
+
+
+
+## Warning
+
+Backups are critical. Bugs can and do happen.
+Always keep multiple backup copies using different tools and storage locations.
+
+
+## Disclaimer
+This software is provided "as is", without any warranties or guarantees of any kind.
+
+The author is not responsible for any data loss, corruption, or damage that may occur from using this software.
+
+This tool is intended for experimental and personal use. It has not been thoroughly tested for all scenarios.
+
+DO NOT rely on this software as your only backup solution.
+Always verify your backups and test restore procedures regularly.
+
+Use at your own risk.
