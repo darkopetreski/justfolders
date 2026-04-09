@@ -23,6 +23,10 @@ Always keep multiple backup copies using different tools and storage locations.
 
 By submitting a contribution (pull request), you agree that your code will be licensed under the same MIT License as this project.
 
+## License
+
+This project is licensed under the MIT License – see the LICENSE file for details.
+
 ## Disclaimer
 This software is provided "as is", without any warranties or guarantees of any kind.
 
