@@ -106,8 +106,8 @@ pub struct InfoArgs {
     pub rsync_get_flags: bool,
 
     /// List all available snapshots
-    #[arg(long = "display-snapshots")]
-    pub display_snapshots: bool,
+    #[arg(long = "display-snapshots", value_name = "[user@host:]/path")]
+    pub display_snapshots: Option<Location>,
 }
 
 impl CliParams {

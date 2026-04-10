@@ -10,7 +10,7 @@ fn main() {
         Commands::Info(args) => {
             if args.rsync_get_flags {
                 println!("{}", DEFAULT_RSYNC_FLAGS);
-            } else if args.display_snapshots {
+            } else if args.display_snapshots.is_some() {
                 println!("display snapshots now");
             }
         }
