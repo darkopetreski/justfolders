@@ -168,7 +168,7 @@ impl<'a> Backup<'a> {
             return None;
         }
 
-        if let Some(log_dir) = self.params.log_dir.clone() {
+        if let Some(log_dir) = &self.params.log_dir {
             return Some(log_dir.join(self.now_string()));
         }
 
