@@ -88,10 +88,16 @@ impl FromStr for Location {
     /// assert!(remote.is_remote());
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((userhost, path)) = s.split_once(':') {
+        let original = if s.ends_with('/') {
+            s.to_string()
+        } else {
+            format!("{}/", s)
+        };
+
+        if let Some((userhost, path)) = original.split_once(':') {
             if let Some((user, host)) = userhost.split_once('@') {
                 return Ok(Location {
-                    original: s.to_string(),
+                    original: original.clone(),
                     kind: LocationKind::Remote {
                         user: user.to_string(),
                         host: host.to_string(),
@@ -99,12 +105,12 @@ impl FromStr for Location {
                     },
                 });
             }
-            return Err(LocationParseError::InvalidRemote(s.to_string()));
+            return Err(LocationParseError::InvalidRemote(original));
         }
 
         Ok(Location {
-            original: s.to_string(),
-            kind: LocationKind::Local(PathBuf::from(s)),
+            kind: LocationKind::Local(PathBuf::from(&original)),
+            original,
         })
     }
 }
