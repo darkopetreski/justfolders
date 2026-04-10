@@ -90,10 +90,6 @@ pub struct CliParams {
     )]
     pub rsync_append_flags: Option<String>,
 
-    /// Automatically delete the oldest backup if disk space runs out.
-    // #[arg(long = "delete-oldest-no-space-left")]
-    // pub delete_oldest_no_space_left: bool,
-
     /// Path to a file containing exclude patterns for rsync.
     ///
     /// The file should follow the same format as supported by rsync’s
