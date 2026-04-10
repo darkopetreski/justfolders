@@ -16,6 +16,8 @@ You get the convenience of modern snapshot backups, with the transparency of a n
 The goal is durability. Years from now - on a different machine, or even a different operating system - your backups will still be readable.
 If you can navigate folders, you can recover your data. No agents. No proprietary formats. Just folders.";
 
+/// Root CLI entry point for JustFolders.
+/// Dispatches to either [`Commands::Backup`] or [`Commands::Info`].
 #[derive(Parser, Debug)]
 #[command(
     name = "JustFolders Backup",
@@ -24,7 +26,6 @@ If you can navigate folders, you can recover your data. No agents. No proprietar
     about = env!("CARGO_PKG_DESCRIPTION"),
     long_about = LONG_ABOUT
 )]
-
 pub struct CliParams {
     #[command(subcommand)]
     pub command: Commands,
@@ -32,13 +33,16 @@ pub struct CliParams {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Run a backup from source to destination.
+    /// Run a backup from source to destination using rsync.
     Backup(BackupArgs),
 
-    /// Print information, only one option can be used at a time.
+    /// Display configuration or snapshot information.
+    /// Only one option can be used at a time.
     Info(InfoArgs),
 }
 
+/// Arguments for the `backup` subcommand.
+/// Runs an rsync-based snapshot backup from `src` to `dest`.
 #[derive(Parser, Debug)]
 #[command(arg_required_else_help = true)]
 pub struct BackupArgs {
@@ -87,6 +91,9 @@ pub struct BackupArgs {
     pub exclude_from: Option<String>,
 }
 
+/// Arguments for the `info` subcommand.
+/// Displays configuration or snapshot information.
+/// Only one option can be applied at a time.
 #[derive(Parser, Debug)]
 #[command(
     arg_required_else_help = true,
@@ -104,14 +111,9 @@ pub struct InfoArgs {
 }
 
 impl CliParams {
-    /// Parse CLI arguments and apply post-processing logic.
-    ///
-    /// This method:
-    /// - Parses arguments using `clap`
-    ///
+    /// Parses CLI arguments using clap and returns a populated [`CliParams`].
     pub fn from_args() -> CliParams {
         let cli = CliParams::parse();
-        // post-processing or validation here
         cli
     }
 }
