@@ -43,8 +43,8 @@ pub enum BackupLinkError {
 /// - Underlying filesystem operations fail (`BackupLinkError::Io`), e.g., reading directories,
 ///   removing files or directories, or creating the symlink.
 pub fn ensure_latest_backup_link(backup: &Backup) -> Result<(), BackupLinkError> {
-    let base_dir = backup.get_params().dest_path();
-    let link_path = backup.get_latest_folder();
+    let base_dir = backup.params().dest_path();
+    let link_path = backup.latest_folder();
 
     let latest = find_latest_backup_folder(&base_dir)?
         .ok_or(BackupLinkError::NoBackups(base_dir.clone()))?;

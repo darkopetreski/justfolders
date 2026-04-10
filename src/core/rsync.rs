@@ -106,11 +106,11 @@ impl Rsync {
 
         // If there is a previous backup, create hard links for unchanged files
         ensure_latest_backup_link(&backup).ok();
-        if backup.get_latest_folder().exists() {
-            cmd.arg("--link-dest").arg(backup.get_latest_folder());
+        if backup.latest_folder().exists() {
+            cmd.arg("--link-dest").arg(backup.latest_folder());
         }
 
-        if let Some(log_filename) = backup.get_log_filename()
+        if let Some(log_filename) = backup.log_filename()
             && let Some(parent) = log_filename.parent()
             && fs::create_dir_all(parent).is_ok()
         {
@@ -118,7 +118,7 @@ impl Rsync {
         }
 
         cmd.arg(params.src_path());
-        cmd.arg(backup.get_in_progress_folder());
+        cmd.arg(backup.in_progress_folder());
 
         println!("rsync command: {:?}", cmd);
 
