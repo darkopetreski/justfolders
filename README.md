@@ -14,6 +14,87 @@ Just folders.
 
 
 
+
+
+
+
+
+
+
+## SSH Key Configuration
+
+JustFolders delegates all remote connections to rsync and SSH.
+Rather than accepting a private key path as a CLI argument, key configuration
+is handled through your SSH config file — which is the standard and most flexible approach.
+
+### Setting up per-host keys
+
+Edit or create `~/.ssh/config` and add an entry for each backup server:
+```
+Host my-backup-server
+HostName 192.168.1.10
+User root
+IdentityFile ~/.ssh/my_backup_key
+Port 22
+```
+
+Then use the hostname alias directly as your destination:
+
+```bash
+justfolders backup /home/user my-backup-server:/backups
+```
+
+### Multiple servers with different keys
+```
+Host server-home
+HostName 192.168.1.10
+User root
+IdentityFile ~/.ssh/key_home
+Port 22
+Host server-offsite
+HostName backup.example.com
+User backup
+IdentityFile ~/.ssh/key_offsite
+Port 2222
+```
+
+```bash
+justfolders backup /home/user server-home:/backups
+justfolders backup /home/user server-offsite:/backups
+```
+
+Each host uses its own key automatically.
+
+### Generating a dedicated backup key
+
+It is recommended to use a dedicated key for backups rather than your personal key:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/my_backup_key -C "justfolders backup"
+```
+
+Then copy the public key to the server:
+
+```bash
+ssh-copy-id -i ~/.ssh/my_backup_key.pub root@192.168.1.10
+```
+
+### Passwordless access for automated backups
+
+If you run JustFolders as a cron job or scheduled task, make sure the key
+has no passphrase, or use `ssh-agent` to unlock it once per session:
+
+```bash
+eval $(ssh-agent)
+ssh-add ~/.ssh/my_backup_key
+```
+
+
+
+
+
+
+
 ## Warning
 
 Backups are critical. Bugs can and do happen.

@@ -64,10 +64,6 @@ pub struct BackupArgs {
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
-    /// Path to the private SSH key used for authentication.
-    #[arg(short = 'i', long = "id_rsa", value_name = "FILE")]
-    pub id_rsa: Option<PathBuf>,
-
     /// Override the default rsync flags used during backup.
     #[arg(
         long = "rsync-set-flags",
