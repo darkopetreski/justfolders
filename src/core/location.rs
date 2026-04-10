@@ -6,14 +6,14 @@ use thiserror::Error;
 ///
 /// The original input string is preserved in [`Location::original`],
 /// while the parsed representation is stored in [`Location::kind`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Location {
     pub original: String,
     pub kind: LocationKind,
 }
 
 /// Describes the type of a [`Location`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LocationKind {
     /// A local filesystem path.
     Local(PathBuf),
@@ -99,9 +99,7 @@ impl FromStr for Location {
                     },
                 });
             }
-            return Err(format!(
-                "invalid remote path, expected user@host:/path, got: {s}"
-            ));
+            return Err(LocationParseError::InvalidRemote(s.to_string()));
         }
 
         Ok(Location {

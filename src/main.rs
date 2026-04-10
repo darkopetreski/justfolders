@@ -1,15 +1,26 @@
 //! JustFolders binary entry: parse CLI, handle `--rsync-get-flags`, validate the
 //! backup destination, then run rsync.
 //use justfolders::core::backup::Backup;
-use justfolders::core::parser::CliParams;
+use justfolders::core::parser::{CliParams, Commands, DEFAULT_RSYNC_FLAGS};
 //use justfolders::core::rsync::Rsync;
 
 fn main() {
-    // Parse arguments with clap and apply derived defaults (e.g. log dir → dest).
-    let args = CliParams::from_args();
+    let cli = CliParams::from_args();
+    match cli.command {
+        Commands::Backup(args) => {
+            println!("Run backup now {:?}", args);
+        }
 
+        Commands::Info(args) => {
+            if args.rsync_get_flags {
+                println!("{}", DEFAULT_RSYNC_FLAGS);
+            } else if args.display_snapshots {
+                println!("display snapshots now");
+            }
+        }
+    }
 
-    println!("{:?}", args);
+    //println!("{:?}", cli);
 
     // // Utility mode: print the configured rsync flags and exit. Skips backup work.
     // CliParams::handle_rsync_get_flags(&args);
