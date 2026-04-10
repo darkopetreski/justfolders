@@ -113,8 +113,7 @@ impl CliParams {
     /// - Parses arguments using `clap`
     ///
     pub fn from_args() -> CliParams {
-        let args = CliParams::parse();
-        args
+        CliParams::parse()
     }
 
     /// Handle the `--rsync-get-flags` utility mode.
