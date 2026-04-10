@@ -12,6 +12,17 @@ fn main() {
                 println!("{}", DEFAULT_RSYNC_FLAGS);
             } else if args.display_snapshots.is_some() {
                 println!("display snapshots now");
+
+
+
+                use justfolders::core::storage_backend::from_location;
+                let backend = from_location(&args.display_snapshots.unwrap(), 22, None);
+                match backend.list_snapshots() {
+                    Ok(snapshots) => snapshots.iter().for_each(|s| println!("{}", s)),
+                    Err(e) => eprintln!("error: {}", e),
+                }
+
+
             }
         }
     }
