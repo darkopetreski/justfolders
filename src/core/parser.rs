@@ -46,10 +46,10 @@ pub enum Commands {
 #[derive(Parser, Debug)]
 #[command(arg_required_else_help = true)]
 pub struct BackupArgs {
-    /// Source directory to back up. [user@host:]/path
+    /// Source directory to back up. Accepts a local path, a remote path (user@host:/path) or an SSH config alias (alias:/path).
     pub src: Location,
 
-    /// Destination directory where backups will be stored. [user@host:]/path
+    /// Destination directory where backups will be stored. Accepts a local path, a remote path (user@host:/path) or an SSH config alias (alias:/path).
     pub dest: Location,
 
     /// SSH port used for remote connections.
@@ -63,6 +63,10 @@ pub struct BackupArgs {
     /// Directory where log files will be stored. Default destination/.logs
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
+
+    /// Path to the private SSH key used for authentication.
+    #[arg(short = 'i', long = "id_rsa", value_name = "FILE")]
+    pub id_rsa: Option<PathBuf>,
 
     /// Override the default rsync flags used during backup.
     #[arg(

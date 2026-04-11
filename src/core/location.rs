@@ -94,7 +94,21 @@ impl FromStr for Location {
             format!("{}/", s)
         };
 
-        if let Some((userhost, path)) = original.split_once(':') {
+        // if let Some((userhost, path)) = original.split_once(':') {
+        //     if let Some((user, host)) = userhost.split_once('@') {
+        //         return Ok(Location {
+        //             original: original.clone(),
+        //             kind: LocationKind::Remote {
+        //                 user: user.to_string(),
+        //                 host: host.to_string(),
+        //                 path: path.to_string(),
+        //             },
+        //         });
+        //     }
+        //     return Err(LocationParseError::InvalidRemote(original));
+        // }
+
+        if let Some((userhost, path)) = s.split_once(':') {
             if let Some((user, host)) = userhost.split_once('@') {
                 return Ok(Location {
                     original: original.clone(),
@@ -105,7 +119,15 @@ impl FromStr for Location {
                     },
                 });
             }
-            return Err(LocationParseError::InvalidRemote(original));
+            // no @ means it's a host alias or bare hostname
+            return Ok(Location {
+                original: original.clone(),
+                kind: LocationKind::Remote {
+                    user: String::new(), // SSH config provides the user
+                    host: userhost.to_string(),
+                    path: path.to_string(),
+                },
+            });
         }
 
         Ok(Location {

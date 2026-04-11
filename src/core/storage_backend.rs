@@ -69,7 +69,14 @@ impl RemoteBackend {
         if let Some(key) = &self.id_rsa {
             cmd.arg("-i").arg(key);
         }
-        cmd.arg(format!("{}@{}", self.user, self.host));
+        //cmd.arg(format!("{}@{}", self.user, self.host));
+        // if user is provided use user@host, otherwise just host (SSH config handles the rest)
+        if self.user.is_empty() {
+            cmd.arg(&self.host);
+        } else {
+            cmd.arg(format!("{}@{}", self.user, self.host));
+        }
+
         cmd
     }
 }
