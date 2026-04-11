@@ -4,3 +4,5 @@ pub mod parser;
 //pub mod latest_link;
 pub mod location;
 pub mod storage_backend;
+pub mod config_generator;
+pub mod config;

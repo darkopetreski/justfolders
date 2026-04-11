@@ -7,6 +7,8 @@ description = "JustFolders is a backup tool for creating folder snapshots withou
 [dependencies]
 chrono = "0.4.44"
 clap = { version = "4.6.0", features = ["derive"] }
+configparser = "3.1.0"
+dirs = "6.0.0"
 thiserror = "2.0.18"
 
 [dev-dependencies]

@@ -1,29 +1,21 @@
-use justfolders::core::parser::{CliParams, Commands, DEFAULT_RSYNC_FLAGS};
+//! JustFolders binary entry point.
+use justfolders::commands;
+use justfolders::core::parser::{CliParams, Commands};
 
 fn main() {
     let cli = CliParams::from_args();
+
+    let config_path = cli.config.unwrap_or_else(|| {
+        eprintln!("error: --config <FILE> is required");
+        eprintln!("usage:");
+        eprintln!("  justfolders --config ~/home.ini backup");
+        eprintln!("  justfolders backup --config ~/home.ini");
+        std::process::exit(1);
+    });
+
     match cli.command {
-        Commands::Backup(args) => {
-            println!("Run backup now {:?}", args);
-        }
-
-        Commands::Info(args) => {
-            if args.rsync_get_flags {
-                println!("{}", DEFAULT_RSYNC_FLAGS);
-            } else if args.display_snapshots.is_some() {
-                println!("display snapshots now");
-
-
-
-                use justfolders::core::storage_backend::from_location;
-                let backend = from_location(&args.display_snapshots.unwrap(), 22, None);
-                match backend.list_snapshots() {
-                    Ok(snapshots) => snapshots.iter().for_each(|s| println!("{}", s)),
-                    Err(e) => eprintln!("error: {}", e),
-                }
-
-
-            }
-        }
+        Commands::Backup => commands::backup::run(Some(&config_path)),
+        Commands::Snapshots => commands::snapshots::run(Some(&config_path)),
+        Commands::Init(args) => commands::init::run(args, &config_path),
     }
 }

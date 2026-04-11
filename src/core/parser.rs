@@ -2,7 +2,7 @@ use crate::core::location::Location;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub const DEFAULT_RSYNC_FLAGS: &str = "-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete";
+//pub const DEFAULT_RSYNC_FLAGS: &str = "-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete";
 
 const LONG_ABOUT: &str = "JustFolders is a backup tool built on a simple idea: your data should never depend on special software to be safe.
 Instead of hiding files inside proprietary formats or databases, justfolders stores everything as plain directories and files.
@@ -16,104 +16,85 @@ You get the convenience of modern snapshot backups, with the transparency of a n
 The goal is durability. Years from now - on a different machine, or even a different operating system - your backups will still be readable.
 If you can navigate folders, you can recover your data. No agents. No proprietary formats. Just folders.";
 
+
 /// Root CLI entry point for JustFolders.
-/// Dispatches to either [`Commands::Backup`] or [`Commands::Info`].
 #[derive(Parser, Debug)]
 #[command(
-    name = "JustFolders Backup",
+    name = "justfolders",
     arg_required_else_help = true,
     version,
     about = env!("CARGO_PKG_DESCRIPTION"),
     long_about = LONG_ABOUT
 )]
 pub struct CliParams {
+    /// Path to the config file.
+    #[arg(long = "config", global = true, value_name = "FILE")]
+    pub config: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
 
+/// Top-level subcommands available in JustFolders.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Run a backup from source to destination using rsync.
-    Backup(BackupArgs),
+    /// Run a backup job using the config file.
+    Backup,
 
-    /// Display configuration or snapshot information.
-    /// Only one option can be used at a time.
-    Info(InfoArgs),
+    /// List all available snapshots at the destination.
+    Snapshots,
+
+    /// Generate a config file from provided arguments.
+    Init(InitArgs),
 }
 
-/// Arguments for the `backup` subcommand.
-/// Runs an rsync-based snapshot backup from `src` to `dest`.
+/// Arguments for the `init` subcommand.
 #[derive(Parser, Debug)]
 #[command(arg_required_else_help = true)]
-pub struct BackupArgs {
-    /// Source directory to back up. Accepts a local path, a remote path (user@host:/path) or an SSH config alias (alias:/path).
-    pub src: Location,
+pub struct InitArgs {
+    /// Source directory to back up.
+    /// Accepts: local path, user@host:/path, or SSH alias:/path.
+    #[arg(long = "src")]
+    pub src: Option<Location>,
 
-    /// Destination directory where backups will be stored. Accepts a local path, a remote path (user@host:/path) or an SSH config alias (alias:/path).
-    pub dest: Location,
+    /// Destination directory where backups will be stored.
+    /// Accepts: local path, user@host:/path, or SSH alias:/path.
+    #[arg(long = "dest")]
+    pub dest: Option<Location>,
 
     /// SSH port used for remote connections.
-    #[arg(short = 'p', long = "port", default_value_t = 22, value_name = "PORT")]
-    pub ssh_port: u16,
+    #[arg(short = 'p', long = "port", value_name = "PORT")]
+    pub ssh_port: Option<u16>,
+
+    /// Path to the private SSH key used for authentication.
+    /// If not provided, SSH will use the key configured in ~/.ssh/config.
+    #[arg(short = 'i', long = "id-rsa", value_name = "FILE")]
+    pub id_rsa: Option<PathBuf>,
 
     /// Disable logging entirely.
     #[arg(long = "disable-logs")]
-    pub disable_logs: bool,
+    pub disable_logs: Option<bool>,
 
-    /// Directory where log files will be stored. Default destination/.logs
+    /// Directory where log files will be stored. Defaults to dest/.logs
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
-
-    /// Path to the private SSH key used for authentication.
-    #[arg(short = 'i', long = "id_rsa", value_name = "FILE")]
-    pub id_rsa: Option<PathBuf>,
-
-    /// Override the default rsync flags used during backup.
-    #[arg(
-        long = "rsync-set-flags",
-        default_value_t = String::from(DEFAULT_RSYNC_FLAGS),
-        value_name = "FLAGS",
-        hide_default_value = true,
-        allow_hyphen_values = true
-    )]
-    pub rsync_set_flags: String,
-
-    /// Append additional rsync flags to the defaults.
-    #[arg(
-        long = "rsync-append-flags",
-        allow_hyphen_values = true,
-        value_name = "FLAGS"
-    )]
-    pub rsync_append_flags: Option<String>,
 
     /// Path to a file containing exclude patterns for rsync.
     #[arg(long = "exclude-from", value_name = "FILE")]
     pub exclude_from: Option<String>,
-}
 
-/// Arguments for the `info` subcommand.
-/// Displays configuration or snapshot information.
-/// Only one option can be applied at a time.
-#[derive(Parser, Debug)]
-#[command(
-    arg_required_else_help = true,
-    override_usage = "justfolders info [OPTION]"
-)]
-#[group(multiple = false, required = true)]
-pub struct InfoArgs {
-    /// Print the default rsync flags.
-    #[arg(long = "rsync-get-flags")]
-    pub rsync_get_flags: bool,
+    /// Save the generated config to a custom path instead of the default location.
+    #[arg(long = "output", value_name = "FILE")]
+    pub output: Option<PathBuf>,
 
-    /// List all available snapshots
-    #[arg(long = "display-snapshots", value_name = "[user@host:]/path")]
-    pub display_snapshots: Option<Location>,
+    /// Print the config to stdout instead of saving it.
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 impl CliParams {
     /// Parses CLI arguments using clap and returns a populated [`CliParams`].
     pub fn from_args() -> CliParams {
-        let cli = CliParams::parse();
-        cli
+        CliParams::parse()
     }
 }
