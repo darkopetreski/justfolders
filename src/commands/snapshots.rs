@@ -14,6 +14,7 @@ pub enum SnapshotsError {
 
 pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     let config = Config::load(&args.config)?;
+
     let backend = from_location(&config.dest, config.port, config.id_rsa);
 
     let snapshots = backend.list_snapshots()?;
@@ -22,5 +23,6 @@ pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     } else {
         snapshots.iter().for_each(|s| println!("{}", s));
     }
+
     Ok(())
 }
