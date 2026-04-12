@@ -92,7 +92,7 @@ pub struct InitArgs {
 
     /// Disable logging entirely.
     #[arg(long = "disable-logs")]
-    pub disable_logs: Option<bool>,
+    pub disable_logs: bool,
 
     /// Directory where log files will be stored. [default: dest/.logs]
     #[arg(long = "log-dir", value_name = "DIR")]

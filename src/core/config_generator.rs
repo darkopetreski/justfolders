@@ -15,10 +15,10 @@ pub struct ConfigGeneratorParams {
     pub dest: Location,
     pub port: Option<u16>,
     pub id_rsa: Option<PathBuf>,
-    pub disable_logs: Option<bool>,
+    pub disable_logs: bool,
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
-    pub rsync_flags: Option<String>,
+    pub rsync_flags: String,
 }
 
 pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
@@ -54,10 +54,8 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     writeln!(out).unwrap();
 
     writeln!(out, "# Disable logging entirely (optional, default: false)").unwrap();
-    match params.disable_logs {
-        Some(val) => writeln!(out, "disable_logs = {}", val).unwrap(),
-        None => writeln!(out, "# disable_logs = false").unwrap(),
-    }
+    writeln!(out, "disable_logs = {}", params.disable_logs).unwrap();
+
     writeln!(out).unwrap();
 
     writeln!(out, "# Directory where log files will be stored (optional, default: dest/.logs)").unwrap();
@@ -78,10 +76,8 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     writeln!(out, "# Default: -D --numeric-ids --links --hard-links --one-file-system").unwrap();
     writeln!(out, "#          --itemize-changes --times --recursive --perms --owner").unwrap();
     writeln!(out, "#          --group --stats --human-readable --delete").unwrap();
-    match &params.rsync_flags {
-        Some(flags) => writeln!(out, "rsync_flags = {}", flags).unwrap(),
-        None => writeln!(out, "# rsync_flags = -D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete").unwrap(),
-    }
+
+    writeln!(out, "rsync_flags = {}", &params.rsync_flags).unwrap();
 
     out
 }

@@ -20,7 +20,7 @@ pub fn run(args: InitArgs) -> Result<(), InitError> {
         disable_logs: args.disable_logs,
         log_dir: args.log_dir,
         exclude_from: args.exclude_from,
-        rsync_flags: None,
+        rsync_flags: args.rsync_flags,
     };
 
     let content = generate_config_content(&params);
