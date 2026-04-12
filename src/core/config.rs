@@ -37,6 +37,14 @@ pub struct Config {
     pub rsync_flags: Option<String>,
 }
 
+pub struct RetentionPolicy {
+    pub keep_hourly: u32,
+    pub keep_daily: u32,
+    pub keep_weekly: u32,
+    pub keep_monthly: u32,
+    pub keep_yearly: u32,
+}
+
 impl Config {
     /// Load config from a path. If the path is just a name (no directory
     /// component), look for it in the current directory.
@@ -177,7 +185,25 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         # Default: -D --numeric-ids --links --hard-links --one-file-system
         #          --itemize-changes --times --recursive --perms --owner
         #          --group --stats --human-readable --delete
-        rsync_flags = {rsync_flags}",
+        rsync_flags = {rsync_flags}
+        
+        
+        [policy]
+        # Number of hourly snapshots to keep (optional, default: 0 - disabled)
+        # keep_hourly = 0
+
+        # Number of daily snapshots to keep (optional, default: 7)
+        # keep_daily = 7
+
+        # Number of weekly snapshots to keep (optional, default: 4)
+        # keep_weekly = 4
+
+        # Number of monthly snapshots to keep (optional, default: 12)
+        # keep_monthly = 12
+
+        # Number of yearly snapshots to keep (optional, default: 2)
+        # keep_yearly = 2
+        ",
         src = params.src.original,
         dest = params.dest.original,
         disable_logs = params.disable_logs,
