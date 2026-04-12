@@ -36,7 +36,11 @@ pub fn run(args: InitArgs) -> Result<(), InitError> {
         ));
     }
 
-    save_config(&content, &args.config)?;
-    println!("config saved to {}", args.config.display());
+    //save_config(&content, &args.config)?;
+    match save_config(&content, &args.config) {
+        Ok(saved_path) => println!("config saved to {}", saved_path.display()),
+        Err(e) => return Err(InitError::SaveError(e)),
+    }
+
     Ok(())
 }
