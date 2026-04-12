@@ -88,8 +88,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         .join("\n")
 }
 
-pub fn save_config(content: &str, path: &PathBuf) -> Result<PathBuf, ConfigGeneratorError> {
-    let path = ensure_ini_extension(path);
+pub fn save_config(content: &str, path: &PathBuf) -> Result<(), ConfigGeneratorError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| ConfigGeneratorError::WriteError {
             path: path.display().to_string(),
@@ -97,15 +96,15 @@ pub fn save_config(content: &str, path: &PathBuf) -> Result<PathBuf, ConfigGener
         })?;
     }
 
-    std::fs::write(&path, content).map_err(|e| ConfigGeneratorError::WriteError {
+    std::fs::write(path, content).map_err(|e| ConfigGeneratorError::WriteError {
         path: path.display().to_string(),
         reason: e.to_string(),
     })?;
 
-    Ok(path)
+    Ok(())
 }
 
-fn ensure_ini_extension(path: &PathBuf) -> PathBuf {
+pub fn ensure_ini_extension(path: &PathBuf) -> PathBuf {
     match path.extension() {
         Some(ext) if ext == "ini" => path.clone(),
         _ => path.with_extension("ini"),

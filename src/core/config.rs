@@ -28,7 +28,6 @@ pub struct Config {
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
     pub rsync_flags: Option<String>,
-    pub rsync_append_flags: Option<String>,
 }
 
 impl Config {
@@ -74,7 +73,6 @@ impl Config {
         let log_dir = ini.get("default", "log_dir").map(PathBuf::from);
         let exclude_from = ini.get("default", "exclude_from");
         let rsync_flags = ini.get("default", "rsync_flags");
-        let rsync_append_flags = ini.get("default", "rsync_append_flags");
 
         let disable_logs = ini
             .getbool("default", "disable_logs")
@@ -93,7 +91,6 @@ impl Config {
             log_dir,
             exclude_from,
             rsync_flags,
-            rsync_append_flags,
         })
     }
 }

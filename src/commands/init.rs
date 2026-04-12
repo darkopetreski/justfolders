@@ -1,4 +1,4 @@
-use crate::core::config_generator::{ConfigGeneratorParams, generate_config_content, save_config};
+use crate::core::config_generator::{ConfigGeneratorParams, generate_config_content, save_config, ensure_ini_extension};
 use crate::core::parser::InitArgs;
 use thiserror::Error;
 
@@ -12,6 +12,7 @@ pub enum InitError {
 }
 
 pub fn run(args: InitArgs) -> Result<(), InitError> {
+    let config_path = ensure_ini_extension(&args.config);
     let params = ConfigGeneratorParams {
         src: args.src,
         dest: args.dest,
@@ -30,17 +31,13 @@ pub fn run(args: InitArgs) -> Result<(), InitError> {
         return Ok(());
     }
 
-    if args.config.exists() {
+    if config_path.exists() {
         return Err(InitError::ConfigAlreadyExists(
             args.config.display().to_string(),
         ));
     }
 
-    //save_config(&content, &args.config)?;
-    match save_config(&content, &args.config) {
-        Ok(saved_path) => println!("config saved to {}", saved_path.display()),
-        Err(e) => return Err(InitError::SaveError(e)),
-    }
-
+    save_config(&content, &config_path)?;
+    println!("config saved to {}", config_path.display());
     Ok(())
 }
