@@ -46,6 +46,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         # JustFolders configuration file
         # Edit this file to configure your backup job.
         # Lines starting with # are comments and are ignored.
+        # Documentation: https://github.com/darkopetreski/justfolders
 
         # Source directory to back up.
         # Accepts: local path, user@host:/path, or SSH alias:/path
