@@ -149,6 +149,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         # Lines starting with # are comments and are ignored.
         # Documentation: https://github.com/darkopetreski/justfolders
 
+        [default]
         # Source directory to back up.
         # Accepts: local path, user@host:/path, or SSH alias:/path
         src = {src}
