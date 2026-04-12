@@ -4,9 +4,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum InitError {
-    #[error("--src and --dest are required for init")]
-    MissingSourceOrDest,
-
     #[error("config file already exists at {0}, delete it first or edit it directly")]
     ConfigAlreadyExists(String),
 

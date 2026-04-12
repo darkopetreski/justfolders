@@ -2,7 +2,7 @@ use crate::core::location::Location;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-//pub const DEFAULT_RSYNC_FLAGS: &str = "-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete";
+pub const DEFAULT_RSYNC_FLAGS: &str = "-D --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete";
 
 const LONG_ABOUT: &str = "JustFolders is a backup tool built on a simple idea: your data should never depend on special software to be safe.
 Instead of hiding files inside proprietary formats or databases, justfolders stores everything as plain directories and files.
@@ -42,6 +42,7 @@ pub enum Commands {
 }
 
 #[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
 pub struct BackupArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
@@ -49,6 +50,7 @@ pub struct BackupArgs {
 }
 
 #[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
 pub struct SnapshotsArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
@@ -56,6 +58,7 @@ pub struct SnapshotsArgs {
 }
 
 #[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
 pub struct InitArgs {
     /// Path to the config file to generate.
     #[arg(long = "config", value_name = "FILE", required = true)]
@@ -77,11 +80,21 @@ pub struct InitArgs {
     #[arg(short = 'i', long = "id-rsa", value_name = "FILE")]
     pub id_rsa: Option<PathBuf>,
 
+    /// Specify rsync flags to be used
+    #[arg(
+        long = "rsync-flags",
+        default_value_t = String::from(DEFAULT_RSYNC_FLAGS),
+        value_name = "FLAGS",
+        hide_default_value = false,
+        allow_hyphen_values = true
+    )]
+    pub rsync_flags: String,
+
     /// Disable logging entirely.
     #[arg(long = "disable-logs")]
     pub disable_logs: Option<bool>,
 
-    /// Directory where log files will be stored.
+    /// Directory where log files will be stored. [default: dest/.logs]
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
