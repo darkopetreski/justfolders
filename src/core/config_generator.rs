@@ -1,5 +1,4 @@
 use crate::core::location::Location;
-use std::fmt::Write;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -22,64 +21,70 @@ pub struct ConfigGeneratorParams {
 }
 
 pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
-    let mut out = String::new();
+    let port = match params.port {
+        Some(port) => format!("port = {}", port),
+        None => "# port = 22".to_string(),
+    };
 
-    writeln!(out, "# JustFolders configuration file").unwrap();
-    writeln!(out, "# Edit this file to configure your backup job.").unwrap();
-    writeln!(out, "# Lines starting with # are comments and are ignored.").unwrap();
-    writeln!(out).unwrap();
+    let id_rsa = match &params.id_rsa {
+        Some(key) => format!("id_rsa = {}", key.display()),
+        None => "# id_rsa = ~/.ssh/backup_key".to_string(),
+    };
 
-    writeln!(out, "# Source directory to back up.").unwrap();
-    writeln!(out, "# Accepts: local path, user@host:/path, or SSH alias:/path").unwrap();
-    writeln!(out, "src = {}", params.src.original).unwrap();
-    writeln!(out).unwrap();
+    let log_dir = match &params.log_dir {
+        Some(dir) => format!("log_dir = {}", dir.display()),
+        None => "# log_dir = /var/log/justfolders".to_string(),
+    };
 
-    writeln!(out, "# Destination directory where backups will be stored.").unwrap();
-    writeln!(out, "# Accepts: local path, user@host:/path, or SSH alias:/path").unwrap();
-    writeln!(out, "dest = {}", params.dest.original).unwrap();
-    writeln!(out).unwrap();
+    let exclude_from = match &params.exclude_from {
+        Some(exc) => format!("exclude_from = {}", exc),
+        None => "# exclude_from = /etc/justfolders/excludes.txt".to_string(),
+    };
 
-    writeln!(out, "# SSH port (optional, default: 22)").unwrap();
-    match params.port {
-        Some(port) => writeln!(out, "port = {}", port).unwrap(),
-        None => writeln!(out, "# port = 22").unwrap(),
-    }
-    writeln!(out).unwrap();
+    let raw = format!(
+        "
+        # JustFolders configuration file
+        # Edit this file to configure your backup job.
+        # Lines starting with # are comments and are ignored.
 
-    writeln!(out, "# Path to SSH private key (optional, uses ~/.ssh/config if not set)").unwrap();
-    match &params.id_rsa {
-        Some(key) => writeln!(out, "id_rsa = {}", key.display()).unwrap(),
-        None => writeln!(out, "# id_rsa = ~/.ssh/backup_key").unwrap(),
-    }
-    writeln!(out).unwrap();
+        # Source directory to back up.
+        # Accepts: local path, user@host:/path, or SSH alias:/path
+        src = {src}
 
-    writeln!(out, "# Disable logging entirely (optional, default: false)").unwrap();
-    writeln!(out, "disable_logs = {}", params.disable_logs).unwrap();
+        # Destination directory where backups will be stored.
+        # Accepts: local path, user@host:/path, or SSH alias:/path
+        dest = {dest}
 
-    writeln!(out).unwrap();
+        # SSH port (optional, default: 22)
+        {port}
 
-    writeln!(out, "# Directory where log files will be stored (optional, default: dest/.logs)").unwrap();
-    match &params.log_dir {
-        Some(dir) => writeln!(out, "log_dir = {}", dir.display()).unwrap(),
-        None => writeln!(out, "# log_dir = /var/log/justfolders").unwrap(),
-    }
-    writeln!(out).unwrap();
+        # Path to SSH private key (optional, uses ~/.ssh/config if not set)
+        {id_rsa}
 
-    writeln!(out, "# Path to rsync exclude patterns file (optional)").unwrap();
-    match &params.exclude_from {
-        Some(exc) => writeln!(out, "exclude_from = {}", exc).unwrap(),
-        None => writeln!(out, "# exclude_from = /etc/justfolders/excludes.txt").unwrap(),
-    }
-    writeln!(out).unwrap();
+        # Disable logging entirely (optional, default: false)
+        disable_logs = {disable_logs}
 
-    writeln!(out, "# Override default rsync flags (optional)").unwrap();
-    writeln!(out, "# Default: -D --numeric-ids --links --hard-links --one-file-system").unwrap();
-    writeln!(out, "#          --itemize-changes --times --recursive --perms --owner").unwrap();
-    writeln!(out, "#          --group --stats --human-readable --delete").unwrap();
+        # Directory where log files will be stored (optional, default: dest/.logs)
+        {log_dir}
 
-    writeln!(out, "rsync_flags = {}", &params.rsync_flags).unwrap();
+        # Path to rsync exclude patterns file (optional)
+        {exclude_from}
 
-    out
+        # Override default rsync flags (optional)
+        # Default: -D --numeric-ids --links --hard-links --one-file-system
+        #          --itemize-changes --times --recursive --perms --owner
+        #          --group --stats --human-readable --delete
+        rsync_flags = {rsync_flags}",
+        src = params.src.original,
+        dest = params.dest.original,
+        disable_logs = params.disable_logs,
+        rsync_flags = params.rsync_flags,
+    );
+
+    raw.lines()
+        .map(|line| line.trim_start())
+        .collect::<Vec<&str>>()
+        .join("\n")
 }
 
 pub fn save_config(content: &str, path: &PathBuf) -> Result<(), ConfigGeneratorError> {
