@@ -1,4 +1,4 @@
-use crate::core::config_generator::{generate_config_content, save_config, ConfigGeneratorParams};
+use crate::core::config_generator::{ConfigGeneratorParams, generate_config_content, save_config};
 use crate::core::parser::InitArgs;
 use thiserror::Error;
 
@@ -15,13 +15,9 @@ pub enum InitError {
 }
 
 pub fn run(args: InitArgs) -> Result<(), InitError> {
-    let (Some(src), Some(dest)) = (args.src, args.dest) else {
-        return Err(InitError::MissingSourceOrDest);
-    };
-
     let params = ConfigGeneratorParams {
-        src,
-        dest,
+        src: args.src,
+        dest: args.dest,
         port: args.ssh_port,
         id_rsa: args.id_rsa,
         disable_logs: args.disable_logs,

@@ -16,7 +16,6 @@ You get the convenience of modern snapshot backups, with the transparency of a n
 The goal is durability. Years from now - on a different machine, or even a different operating system - your backups will still be readable.
 If you can navigate folders, you can recover your data. No agents. No proprietary formats. Just folders.";
 
-
 /// Root CLI entry point for JustFolders.
 #[derive(Parser, Debug)]
 #[command(
@@ -27,10 +26,6 @@ If you can navigate folders, you can recover your data. No agents. No proprietar
     long_about = LONG_ABOUT
 )]
 pub struct CliParams {
-    /// Path to the config file.
-    #[arg(long = "config", global = true, value_name = "FILE")]
-    pub config: Option<PathBuf>,
-
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -67,12 +62,12 @@ pub struct InitArgs {
     pub config: PathBuf,
 
     /// Source directory to back up.
-    #[arg(long = "src")]
-    pub src: Option<Location>,
+    #[arg(long = "src", required = true)]
+    pub src: Location,
 
     /// Destination directory where backups will be stored.
-    #[arg(long = "dest")]
-    pub dest: Option<Location>,
+    #[arg(long = "dest", required = true)]
+    pub dest: Location,
 
     /// SSH port used for remote connections.
     #[arg(short = 'p', long = "port", value_name = "PORT")]
