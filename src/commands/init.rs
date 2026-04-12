@@ -1,4 +1,4 @@
-use crate::core::config_generator::{ConfigGeneratorParams, generate_config_content, save_config, ensure_ini_extension};
+use crate::core::config::{ConfigGeneratorParams, generate_config_content, save_config, ensure_ini_extension};
 use crate::core::parser::InitArgs;
 use thiserror::Error;
 
@@ -8,7 +8,7 @@ pub enum InitError {
     ConfigAlreadyExists(String),
 
     #[error(transparent)]
-    SaveError(#[from] crate::core::config_generator::ConfigGeneratorError),
+    SaveError(#[from] crate::core::config::ConfigError),
 }
 
 pub fn run(args: InitArgs) -> Result<(), InitError> {
