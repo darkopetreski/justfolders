@@ -35,14 +35,47 @@ pub struct Config {
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
     pub rsync_flags: Option<String>,
+    pub policy: RetentionPolicy,
 }
 
+#[derive(Debug, Default)]
 pub struct RetentionPolicy {
-    pub keep_hourly: u32,
-    pub keep_daily: u32,
-    pub keep_weekly: u32,
-    pub keep_monthly: u32,
-    pub keep_yearly: u32,
+    pub keep_hourly: Option<u32>,
+    pub keep_daily: Option<u32>,
+    pub keep_weekly: Option<u32>,
+    pub keep_monthly: Option<u32>,
+    pub keep_yearly: Option<u32>,
+    pub keep_within_hourly: Option<u32>,
+    pub keep_within_daily: Option<u32>,
+    pub keep_within_weekly: Option<u32>,
+    pub keep_within_monthly: Option<u32>,
+    pub keep_within_yearly: Option<u32>,
+}
+
+impl RetentionPolicy {
+    fn load(ini: &Ini) -> Result<Self, ConfigError> {
+        let get_uint = |key: &str| -> Result<Option<u32>, ConfigError> {
+            ini.getuint("policy", key)
+                .map(|v| v.map(|n| n as u32))
+                .map_err(|e| ConfigError::InvalidValue {
+                    field: key.to_string(),
+                    reason: e,
+                })
+        };
+
+        Ok(RetentionPolicy {
+            keep_hourly: get_uint("keep_hourly")?,
+            keep_daily: get_uint("keep_daily")?,
+            keep_weekly: get_uint("keep_weekly")?,
+            keep_monthly: get_uint("keep_monthly")?,
+            keep_yearly: get_uint("keep_yearly")?,
+            keep_within_hourly: get_uint("keep_within_hourly")?,
+            keep_within_daily: get_uint("keep_within_daily")?,
+            keep_within_weekly: get_uint("keep_within_weekly")?,
+            keep_within_monthly: get_uint("keep_within_monthly")?,
+            keep_within_yearly: get_uint("keep_within_yearly")?,
+        })
+    }
 }
 
 impl Config {
@@ -100,6 +133,8 @@ impl Config {
             })?
             .unwrap_or(false);
 
+        let policy = RetentionPolicy::load(&ini)?;
+
         Ok(Config {
             src,
             dest,
@@ -109,6 +144,7 @@ impl Config {
             log_dir,
             exclude_from,
             rsync_flags,
+            policy,
         })
     }
 }
@@ -125,9 +161,17 @@ pub struct ConfigGeneratorParams {
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
     pub rsync_flags: String,
+    pub policy: RetentionPolicy,
 }
 
 // ── Generation ─────────────────────────────────────────────────────────────
+
+fn optional_policy_line(key: &str, value: Option<u32>) -> String {
+    match value {
+        Some(v) => format!("{} = {}", key, v),
+        None => format!("# {} = 0", key),
+    }
+}
 
 pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     let port = match params.port {
@@ -149,6 +193,18 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         Some(exc) => format!("exclude_from = {}", exc),
         None => "# exclude_from = /etc/justfolders/excludes.txt".to_string(),
     };
+
+    let p = &params.policy;
+    let keep_hourly = optional_policy_line("keep_hourly", p.keep_hourly);
+    let keep_daily = optional_policy_line("keep_daily", p.keep_daily);
+    let keep_weekly = optional_policy_line("keep_weekly", p.keep_weekly);
+    let keep_monthly = optional_policy_line("keep_monthly", p.keep_monthly);
+    let keep_yearly = optional_policy_line("keep_yearly", p.keep_yearly);
+    let keep_within_hourly = optional_policy_line("keep_within_hourly", p.keep_within_hourly);
+    let keep_within_daily = optional_policy_line("keep_within_daily", p.keep_within_daily);
+    let keep_within_weekly = optional_policy_line("keep_within_weekly", p.keep_within_weekly);
+    let keep_within_monthly = optional_policy_line("keep_within_monthly", p.keep_within_monthly);
+    let keep_within_yearly = optional_policy_line("keep_within_yearly", p.keep_within_yearly);
 
     let raw = format!(
         "
@@ -187,22 +243,36 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         #          --group --stats --human-readable --delete
         rsync_flags = {rsync_flags}
         
-        
         [policy]
-        # Number of hourly snapshots to keep (optional, default: 0 - disabled)
-        # keep_hourly = 0
+        # Number of hourly snapshots to keep (0 = disabled)
+        {keep_hourly}
 
-        # Number of daily snapshots to keep (optional, default: 7)
-        # keep_daily = 7
+        # Number of daily snapshots to keep (0 = disabled)
+        {keep_daily}
 
-        # Number of weekly snapshots to keep (optional, default: 4)
-        # keep_weekly = 4
+        # Number of weekly snapshots to keep (0 = disabled)
+        {keep_weekly}
 
-        # Number of monthly snapshots to keep (optional, default: 12)
-        # keep_monthly = 12
+        # Number of monthly snapshots to keep (0 = disabled)
+        {keep_monthly}
 
-        # Number of yearly snapshots to keep (optional, default: 2)
-        # keep_yearly = 2
+        # Number of yearly snapshots to keep (0 = disabled)
+        {keep_yearly}
+
+        # Keep all snapshots within the last N hours (0 = disabled)
+        {keep_within_hourly}
+
+        # Keep all snapshots within the last N days (0 = disabled)
+        {keep_within_daily}
+
+        # Keep all snapshots within the last N weeks (0 = disabled)
+        {keep_within_weekly}
+
+        # Keep all snapshots within the last N months (0 = disabled)
+        {keep_within_monthly}
+
+        # Keep all snapshots within the last N years (0 = disabled)
+        {keep_within_yearly}
         ",
         src = params.src.original,
         dest = params.dest.original,

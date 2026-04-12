@@ -102,6 +102,47 @@ pub struct InitArgs {
     #[arg(long = "exclude-from", value_name = "FILE")]
     pub exclude_from: Option<String>,
 
+
+    /// Number of hourly snapshots to keep.
+    #[arg(long = "keep-hourly", value_name = "N")]
+    pub keep_hourly: Option<u32>,
+
+    /// Number of daily snapshots to keep.
+    #[arg(long = "keep-daily", value_name = "N")]
+    pub keep_daily: Option<u32>,
+
+    /// Number of weekly snapshots to keep.
+    #[arg(long = "keep-weekly", value_name = "N")]
+    pub keep_weekly: Option<u32>,
+
+    /// Number of monthly snapshots to keep.
+    #[arg(long = "keep-monthly", value_name = "N")]
+    pub keep_monthly: Option<u32>,
+
+    /// Number of yearly snapshots to keep.
+    #[arg(long = "keep-yearly", value_name = "N")]
+    pub keep_yearly: Option<u32>,
+
+    /// Keep all snapshots within the last N hours.
+    #[arg(long = "keep-within-hourly", value_name = "N")]
+    pub keep_within_hourly: Option<u32>,
+
+    /// Keep all snapshots within the last N days.
+    #[arg(long = "keep-within-daily", value_name = "N")]
+    pub keep_within_daily: Option<u32>,
+
+    /// Keep all snapshots within the last N weeks.
+    #[arg(long = "keep-within-weekly", value_name = "N")]
+    pub keep_within_weekly: Option<u32>,
+
+    /// Keep all snapshots within the last N months.
+    #[arg(long = "keep-within-monthly", value_name = "N")]
+    pub keep_within_monthly: Option<u32>,
+
+    /// Keep all snapshots within the last N years.
+    #[arg(long = "keep-within-yearly", value_name = "N")]
+    pub keep_within_yearly: Option<u32>,
+    
     /// Print the config to stdout instead of saving it.
     #[arg(long = "dry-run")]
     pub dry_run: bool,
