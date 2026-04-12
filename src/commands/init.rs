@@ -1,11 +1,22 @@
 use crate::core::config_generator::{generate_config_content, save_config, ConfigGeneratorParams};
 use crate::core::parser::InitArgs;
-use std::path::PathBuf;
+use thiserror::Error;
 
-pub fn run(args: InitArgs, config_path: &PathBuf) {
+#[derive(Debug, Error)]
+pub enum InitError {
+    #[error("--src and --dest are required for init")]
+    MissingSourceOrDest,
+
+    #[error("config file already exists at {0}, delete it first or edit it directly")]
+    ConfigAlreadyExists(String),
+
+    #[error(transparent)]
+    SaveError(#[from] crate::core::config_generator::ConfigGeneratorError),
+}
+
+pub fn run(args: InitArgs) -> Result<(), InitError> {
     let (Some(src), Some(dest)) = (args.src, args.dest) else {
-        eprintln!("error: --src and --dest are required for init");
-        std::process::exit(1);
+        return Err(InitError::MissingSourceOrDest);
     };
 
     let params = ConfigGeneratorParams {
@@ -23,22 +34,16 @@ pub fn run(args: InitArgs, config_path: &PathBuf) {
 
     if args.dry_run {
         println!("{}", content);
-        return;
+        return Ok(());
     }
 
-    if config_path.exists() {
-        eprintln!(
-            "error: config file already exists at {}, delete it first or edit it directly",
-            config_path.display()
-        );
-        std::process::exit(1);
+    if args.config.exists() {
+        return Err(InitError::ConfigAlreadyExists(
+            args.config.display().to_string(),
+        ));
     }
 
-    match save_config(&content, config_path) {
-        Ok(_) => println!("config saved to {}", config_path.display()),
-        Err(e) => {
-            eprintln!("error: {}", e);
-            std::process::exit(1);
-        }
-    }
+    save_config(&content, &args.config)?;
+    println!("config saved to {}", args.config.display());
+    Ok(())
 }

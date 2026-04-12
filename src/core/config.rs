@@ -33,14 +33,9 @@ pub struct Config {
 
 impl Config {
     /// Load config from an explicit path or auto-discover it.
-    pub fn load(explicit_path: Option<&PathBuf>) -> Result<Self, ConfigError> {
-        let path = match explicit_path {
-            Some(p) => p.clone(),
-            None => find_config().ok_or(ConfigError::NotFound)?,
-        };
-
+    pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
         let mut ini = Ini::new();
-        ini.load(&path).map_err(|e| ConfigError::ReadError {
+        ini.load(path).map_err(|e| ConfigError::ReadError {
             path: path.display().to_string(),
             reason: e,
         })?;
@@ -53,15 +48,19 @@ impl Config {
             .get("default", "dest")
             .ok_or_else(|| ConfigError::MissingField("dest".to_string()))?;
 
-        let src = src_str.parse::<Location>().map_err(|e| ConfigError::InvalidValue {
-            field: "src".to_string(),
-            reason: e.to_string(),
-        })?;
+        let src = src_str
+            .parse::<Location>()
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "src".to_string(),
+                reason: e.to_string(),
+            })?;
 
-        let dest = dest_str.parse::<Location>().map_err(|e| ConfigError::InvalidValue {
-            field: "dest".to_string(),
-            reason: e.to_string(),
-        })?;
+        let dest = dest_str
+            .parse::<Location>()
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "dest".to_string(),
+                reason: e.to_string(),
+            })?;
 
         let port = ini
             .getuint("default", "port")

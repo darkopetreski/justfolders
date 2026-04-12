@@ -34,31 +34,43 @@ pub struct CliParams {
     #[command(subcommand)]
     pub command: Commands,
 }
-
-/// Top-level subcommands available in JustFolders.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Run a backup job using the config file.
-    Backup,
+    Backup(BackupArgs),
 
     /// List all available snapshots at the destination.
-    Snapshots,
+    Snapshots(SnapshotsArgs),
 
     /// Generate a config file from provided arguments.
     Init(InitArgs),
 }
 
-/// Arguments for the `init` subcommand.
 #[derive(Parser, Debug)]
-#[command(arg_required_else_help = true)]
+pub struct BackupArgs {
+    /// Path to the config file.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+}
+
+#[derive(Parser, Debug)]
+pub struct SnapshotsArgs {
+    /// Path to the config file.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+}
+
+#[derive(Parser, Debug)]
 pub struct InitArgs {
+    /// Path to the config file to generate.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+
     /// Source directory to back up.
-    /// Accepts: local path, user@host:/path, or SSH alias:/path.
     #[arg(long = "src")]
     pub src: Option<Location>,
 
     /// Destination directory where backups will be stored.
-    /// Accepts: local path, user@host:/path, or SSH alias:/path.
     #[arg(long = "dest")]
     pub dest: Option<Location>,
 
@@ -67,7 +79,6 @@ pub struct InitArgs {
     pub ssh_port: Option<u16>,
 
     /// Path to the private SSH key used for authentication.
-    /// If not provided, SSH will use the key configured in ~/.ssh/config.
     #[arg(short = 'i', long = "id-rsa", value_name = "FILE")]
     pub id_rsa: Option<PathBuf>,
 
@@ -75,17 +86,13 @@ pub struct InitArgs {
     #[arg(long = "disable-logs")]
     pub disable_logs: Option<bool>,
 
-    /// Directory where log files will be stored. Defaults to dest/.logs
+    /// Directory where log files will be stored.
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
     /// Path to a file containing exclude patterns for rsync.
     #[arg(long = "exclude-from", value_name = "FILE")]
     pub exclude_from: Option<String>,
-
-    /// Save the generated config to a custom path instead of the default location.
-    #[arg(long = "output", value_name = "FILE")]
-    pub output: Option<PathBuf>,
 
     /// Print the config to stdout instead of saving it.
     #[arg(long = "dry-run")]

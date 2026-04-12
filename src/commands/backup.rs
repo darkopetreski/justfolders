@@ -1,12 +1,16 @@
 use crate::core::config::Config;
-use std::path::PathBuf;
+use crate::core::parser::BackupArgs;
+use thiserror::Error;
 
-pub fn run(config_path: Option<&PathBuf>) {
-    let config = Config::load(config_path).unwrap_or_else(|e| {
-        eprintln!("error: {}", e);
-        std::process::exit(1);
-    });
+#[derive(Debug, Error)]
+pub enum BackupError {
+    #[error(transparent)]
+    Config(#[from] crate::core::config::ConfigError),
+}
 
+pub fn run(args: BackupArgs) -> Result<(), BackupError> {
+    let config = Config::load(&args.config)?;
     // TODO: run rsync
     println!("backing up {} to {}", config.src.original, config.dest.original);
+    Ok(())
 }

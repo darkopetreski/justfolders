@@ -1,21 +1,17 @@
-//! JustFolders binary entry point.
 use justfolders::commands;
 use justfolders::core::parser::{CliParams, Commands};
 
 fn main() {
     let cli = CliParams::from_args();
 
-    let config_path = cli.config.unwrap_or_else(|| {
-        eprintln!("error: --config <FILE> is required");
-        eprintln!("usage:");
-        eprintln!("  justfolders --config ~/home.ini backup");
-        eprintln!("  justfolders backup --config ~/home.ini");
-        std::process::exit(1);
-    });
+    let result = match cli.command {
+        Commands::Backup(args) => commands::backup::run(args).map_err(|e| e.to_string()),
+        Commands::Snapshots(args) => commands::snapshots::run(args).map_err(|e| e.to_string()),
+        Commands::Init(args) => commands::init::run(args).map_err(|e| e.to_string()),
+    };
 
-    match cli.command {
-        Commands::Backup => commands::backup::run(Some(&config_path)),
-        Commands::Snapshots => commands::snapshots::run(Some(&config_path)),
-        Commands::Init(args) => commands::init::run(args, &config_path),
+    if let Err(e) = result {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
     }
 }
