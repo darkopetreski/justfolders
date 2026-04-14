@@ -3,4 +3,4 @@ pub mod location;
 pub mod storage_backend;
 pub mod config;
 pub mod rsync;
-//pub mod backup;
+pub mod backup_layout;

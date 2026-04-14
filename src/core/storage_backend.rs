@@ -29,6 +29,15 @@ pub trait StorageBackend {
 
     /// Create or update the `latest` symlink pointing to the given snapshot name.
     fn update_latest_symlink(&self, snapshot_name: &str) -> Result<(), StorageBackendError>;
+
+    /// Rename the in-progress `tmp` folder to the given snapshot name.
+    ///
+    /// This is called after rsync completes successfully to promote `<dest>/tmp`
+    /// to a permanent timestamped snapshot folder.
+    fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError>;
+
+    /// Returns `true` if the `latest` symlink or folder exists in the destination.
+    fn latest_exists(&self) -> Result<bool, StorageBackendError>;
 }
 
 pub struct LocalBackend {
@@ -136,6 +145,25 @@ impl StorageBackend for RemoteBackend {
         }
         Ok(())
     }
+
+    fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        let cmd = format!("mv {}/tmp {}/{}", self.path, self.path, snapshot_name);
+        let status = self.ssh_command().arg(&cmd).status()?;
+        if !status.success() {
+            return Err(StorageBackendError::Ssh(format!(
+                "failed to rename tmp to {}",
+                snapshot_name
+            )));
+        }
+        Ok(())
+    }
+
+    fn latest_exists(&self) -> Result<bool, StorageBackendError> {
+        let cmd = format!("test -e {}/latest", self.path);
+        let status = self.ssh_command().arg(&cmd).status()?;
+        Ok(status.success())
+    }
+
 }
 
 impl StorageBackend for LocalBackend {
@@ -184,4 +212,17 @@ impl StorageBackend for LocalBackend {
 
         Ok(())
     }
+
+    fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        let from = self.path.join("tmp");
+        let to = self.path.join(snapshot_name);
+        std::fs::rename(&from, &to)?;
+        Ok(())
+    }
+
+    fn latest_exists(&self) -> Result<bool, StorageBackendError> {
+        let latest = self.path.join("latest");
+        Ok(latest.exists() || latest.is_symlink())
+    }
+
 }

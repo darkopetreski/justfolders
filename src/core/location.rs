@@ -45,6 +45,37 @@ impl Location {
     pub fn is_remote(&self) -> bool {
         matches!(self.kind, LocationKind::Remote { .. })
     }
+
+    /// Appends a subfolder name to this location, returning an rsync-ready string.
+    ///
+    /// Works for both local and remote locations:
+    /// - Local:  `/home/backups` + `"tmp"` → `"/home/backups/tmp"`
+    /// - Remote: `user@host:/home/backups` + `"tmp"` → `"user@host:/home/backups/tmp"`
+    /// - Alias:  `myserver:/home/backups` + `"tmp"` → `"myserver:/home/backups/tmp"`
+    pub fn join(&self, subfolder: &str) -> String {
+        match &self.kind {
+            LocationKind::Local(p) => p.join(subfolder).to_string_lossy().into_owned(),
+            LocationKind::Remote { user, host, path } => {
+                let prefix = if user.is_empty() {
+                    host.clone()
+                } else {
+                    format!("{}@{}", user, host)
+                };
+                format!("{}:{}/{}", prefix, path.trim_end_matches('/'), subfolder)
+            }
+        }
+    }
+
+    /// Returns the local `PathBuf` for this location, or `None` if it is remote.
+    ///
+    /// Use this when you need to perform local filesystem operations (rename,
+    /// symlink creation, existence checks) that are only valid for local destinations.
+    pub fn local_path(&self) -> Option<&PathBuf> {
+        match &self.kind {
+            LocationKind::Local(p) => Some(p),
+            LocationKind::Remote { .. } => None,
+        }
+    }
 }
 
 /// Errors that can occur when parsing a [`Location`] from a string.
