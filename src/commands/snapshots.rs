@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::core::parser::SnapshotsArgs;
-use crate::core::storage_backend::from_location;
+use crate::core::storage_backend::from_config;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -15,7 +15,7 @@ pub enum SnapshotsError {
 pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     let config = Config::load(&args.config)?;
 
-    let backend = from_location(&config.dest, config.port, config.id_rsa);
+    let backend = from_config(&config);
 
     let snapshots = backend.list_snapshots()?;
     if snapshots.is_empty() {

@@ -2,7 +2,7 @@ use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::parser::BackupArgs;
 use crate::core::rsync::{Rsync, RsyncError};
-use crate::core::storage_backend::{from_location, StorageBackendError};
+use crate::core::storage_backend::StorageBackendError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -20,11 +20,10 @@ pub enum BackupError {
 pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     let config = Config::load(&args.config)?;
     let layout = BackupLayout::new(&config);
-    let backend = from_location(&config.dest, config.port, config.id_rsa.clone());
 
-    Rsync::new(&config, &layout, backend.as_ref())?.run()?;
+    Rsync::new(&config, &layout)?.run()?;
 
-    layout.move_in_progress_to_latest(backend.as_ref())?;
+    layout.move_in_progress_to_latest()?;
 
     println!(
         "backup complete: {} → {}",

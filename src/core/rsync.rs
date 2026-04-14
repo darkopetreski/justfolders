@@ -1,6 +1,6 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
-use crate::core::storage_backend::{StorageBackend, StorageBackendError};
+use crate::core::storage_backend::StorageBackendError;
 use std::fs;
 use std::io;
 use std::process::{Command, ExitStatus};
@@ -27,15 +27,10 @@ pub struct Rsync {
 }
 
 impl Rsync {
-    /// Builds an `rsync` command from [`Config`], [`BackupLayout`], and a
-    /// [`StorageBackend`] used to check whether `latest` already exists.
-    pub fn new(
-        config: &Config,
-        layout: &BackupLayout,
-        backend: &dyn StorageBackend,
-    ) -> Result<Self, RsyncError> {
+    /// Builds an `rsync` command from [`Config`] and [`BackupLayout`].
+    pub fn new(config: &Config, layout: &BackupLayout) -> Result<Self, RsyncError> {
         Ok(Self {
-            cmd: Self::build_cmd(config, layout, backend)?,
+            cmd: Self::build_cmd(config, layout)?,
         })
     }
 
@@ -52,11 +47,7 @@ impl Rsync {
         Ok(())
     }
 
-    fn build_cmd(
-        config: &Config,
-        layout: &BackupLayout,
-        backend: &dyn StorageBackend,
-    ) -> Result<Command, RsyncError> {
+    fn build_cmd(config: &Config, layout: &BackupLayout) -> Result<Command, RsyncError> {
         let mut cmd = Command::new("rsync");
 
         // Default or custom flags
@@ -81,7 +72,7 @@ impl Rsync {
 
         // Hard-link unchanged files against the previous snapshot only when
         // `latest` actually exists (skipped on the very first run).
-        if backend.latest_exists()? {
+        if layout.backend().latest_exists()? {
             cmd.arg("--link-dest").arg(layout.latest_arg());
         }
 

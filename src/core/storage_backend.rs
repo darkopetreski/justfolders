@@ -1,4 +1,4 @@
-use crate::core::location::{Location, LocationKind};
+use crate::core::location::LocationKind;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -52,12 +52,8 @@ pub struct RemoteBackend {
     id_rsa: Option<PathBuf>,
 }
 
-pub fn from_location(
-    location: &Location,
-    ssh_port: u16,
-    id_rsa: Option<PathBuf>,
-) -> Box<dyn StorageBackend> {
-    match &location.kind {
+pub fn from_config(config: &crate::core::config::Config) -> Box<dyn StorageBackend> {
+    match &config.dest.kind {
         LocationKind::Local(path) => Box::new(LocalBackend { path: path.clone() }),
         LocationKind::Remote {
             user, host, path, ..
@@ -65,8 +61,8 @@ pub fn from_location(
             user: user.clone(),
             host: host.clone(),
             path: path.clone(),
-            ssh_port,
-            id_rsa,
+            ssh_port: config.port,
+            id_rsa: config.id_rsa.clone(),
         }),
     }
 }

@@ -1,27 +1,23 @@
 use crate::core::config::Config;
-use crate::core::storage_backend::{StorageBackend, StorageBackendError};
+use crate::core::storage_backend::{from_config, StorageBackend, StorageBackendError};
 use chrono::Local;
 use std::path::PathBuf;
 
 const DEFAULT_LOG_DIR_NAME: &str = "justfolders";
-
 const IN_PROGRESS_NAME: &str = "tmp";
 const LATEST_NAME: &str = "latest";
 const LOGS_DIR_NAME: &str = ".logs";
 
 // ── BackupLayout ─────────────────────────────────────────────────────────────
 
-/// Derives all folder and file paths needed during a backup run from a [`Config`].
+/// Derives all folder and file paths needed during a backup run from a [`Config`],
+/// and owns the [`StorageBackend`] used for all destination-side operations.
 ///
-/// **Rsync-facing** methods return `String` values that are valid rsync path
-/// arguments for both local (`/dest/tmp`) and remote (`user@host:/dest/tmp`)
-/// destinations.
-///
-/// Filesystem mutations (rename, symlink) are delegated to a [`StorageBackend`]
-/// so the same logic works for local and remote destinations.
-#[derive(Debug)]
+/// **Rsync-facing** methods return `String` values valid as rsync path arguments
+/// for both local (`/dest/tmp`) and remote (`user@host:/dest/tmp`) destinations.
 pub struct BackupLayout<'a> {
     config: &'a Config,
+    backend: Box<dyn StorageBackend>,
     /// Timestamp captured once at construction so all paths in a single run
     /// share the same value.
     timestamp: String,
@@ -30,9 +26,18 @@ pub struct BackupLayout<'a> {
 impl<'a> BackupLayout<'a> {
     pub fn new(config: &'a Config) -> Self {
         Self {
+            backend: from_config(config),
             config,
             timestamp: Local::now().format("%Y-%m-%d-%H%M%S").to_string(),
         }
+    }
+
+    /// Returns the backend for this layout.
+    ///
+    /// Exposed so callers (e.g. [`Rsync`]) can call backend methods without
+    /// holding a separate reference to it.
+    pub fn backend(&self) -> &dyn StorageBackend {
+        self.backend.as_ref()
     }
 
     // ── Rsync-facing (String) ────────────────────────────────────────────────
@@ -68,18 +73,12 @@ impl<'a> BackupLayout<'a> {
     // ── Finalization ─────────────────────────────────────────────────────────
 
     /// Finalizes the backup by renaming `tmp` to a timestamped folder and
-    /// updating the `latest` symlink, via the provided [`StorageBackend`].
+    /// updating the `latest` symlink.
     ///
     /// Works for both local and remote destinations.
-    ///
-    /// # Errors
-    /// Propagates any [`StorageBackendError`] from the backend.
-    pub fn move_in_progress_to_latest(
-        &self,
-        backend: &dyn StorageBackend,
-    ) -> Result<(), StorageBackendError> {
-        backend.rename_in_progress(&self.timestamp)?;
-        backend.update_latest_symlink(&self.timestamp)?;
+    pub fn move_in_progress_to_latest(&self) -> Result<(), StorageBackendError> {
+        self.backend.rename_in_progress(&self.timestamp)?;
+        self.backend.update_latest_symlink(&self.timestamp)?;
         Ok(())
     }
 
@@ -109,7 +108,6 @@ impl<'a> BackupLayout<'a> {
             return Some(local.join(LOGS_DIR_NAME).join(&self.timestamp));
         }
 
-        // Remote destination: fall back to the OS-provided local data directory.
         dirs::data_dir().map(|d| d.join(DEFAULT_LOG_DIR_NAME).join(&self.timestamp))
     }
 }
