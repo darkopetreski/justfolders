@@ -53,13 +53,13 @@ impl<'a> Backup<'a> {
     /// # Errors
     /// - `BackupError::MissingMarker { marker_path }` if the marker file does not exist.
     ///
-    pub fn ensure_marker(&self) -> Result<(), BackupError> {
-        let marker_path = self.params.dest_path().join("backup.marker");
-        if !marker_path.exists() {
-            return Err(BackupError::MissingMarker { marker_path });
-        }
-        Ok(())
-    }
+    // pub fn ensure_marker(&self) -> Result<(), BackupError> {
+    //     let marker_path = self.params.dest_path().join("backup.marker");
+    //     if !marker_path.exists() {
+    //         return Err(BackupError::MissingMarker { marker_path });
+    //     }
+    //     Ok(())
+    // }
 
     /// Finalizes the in-progress backup by moving it to a timestamped folder
     /// and updating the `latest` symlink.
