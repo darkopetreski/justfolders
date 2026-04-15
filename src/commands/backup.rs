@@ -5,6 +5,7 @@ use crate::core::rsync::{Rsync, RsyncError};
 use crate::core::storage_backend::StorageBackendError;
 use thiserror::Error;
 
+/// Errors that can occur during a backup run.
 #[derive(Debug, Error)]
 pub enum BackupError {
     #[error(transparent)]
@@ -25,6 +26,7 @@ pub enum BackupError {
     BothRemote,
 }
 
+/// Runs a full backup: loads the config, validates it, runs rsync, and finalizes the snapshot.
 pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     let config = Config::load(&args.config)?;
 
@@ -33,6 +35,7 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     }
 
     let layout = BackupLayout::new(&config);
+    layout.prepare_log_dir();
 
     Rsync::new(&config, &layout)?.run()?;
 

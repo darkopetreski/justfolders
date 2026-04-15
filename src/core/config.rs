@@ -5,6 +5,7 @@ use thiserror::Error;
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
+/// Errors that can occur when loading or saving a config file.
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("failed to read config file at {path}: {reason}")]
@@ -22,6 +23,7 @@ pub enum ConfigError {
 
 // ── Config struct ──────────────────────────────────────────────────────────
 
+/// Parsed representation of a JustFolders configuration file.
 #[derive(Debug)]
 pub struct Config {
     pub src: Location,
@@ -35,6 +37,10 @@ pub struct Config {
     pub policy: RetentionPolicy,
 }
 
+/// Snapshot retention rules loaded from the `[policy]` section of the config file.
+///
+/// Each field controls how many snapshots of a given granularity to keep.
+/// `None` means the rule is disabled.
 #[derive(Debug, Default)]
 pub struct RetentionPolicy {
     pub keep_hourly: Option<u32>,
@@ -148,6 +154,9 @@ impl Config {
 
 // ── Generator params ───────────────────────────────────────────────────────
 
+/// Parameters used to render a new config file via [`generate_config_content`].
+///
+/// Populated from [`crate::core::parser::InitArgs`] via its `From` conversion.
 #[derive(Debug)]
 pub struct ConfigGeneratorParams {
     pub src: Location,
@@ -170,6 +179,10 @@ fn optional_policy_line(key: &str, value: Option<u32>) -> String {
     }
 }
 
+/// Renders a complete `.ini` config file as a string from the given parameters.
+///
+/// Optional fields that are `None` are emitted as commented-out placeholders so
+/// the user can see and enable them easily.
 pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     let port = match params.port {
         Some(port) => format!("port = {}", port),
@@ -285,6 +298,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
 
 // ── Saving ─────────────────────────────────────────────────────────────────
 
+/// Writes `content` to `path`, creating any missing parent directories first.
 pub fn save_config(content: &str, path: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| ConfigError::WriteError {
@@ -317,6 +331,7 @@ pub fn resolve_path(path: &Path) -> PathBuf {
     }
 }
 
+/// Returns a copy of `path` with a `.ini` extension, adding it if absent.
 pub fn ensure_ini_extension(path: &Path) -> PathBuf {
     match path.extension() {
         Some(ext) if ext == "ini" => path.to_path_buf(),

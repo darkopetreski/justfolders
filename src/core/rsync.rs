@@ -1,13 +1,13 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::storage_backend::StorageBackendError;
-use std::fs;
 use std::io;
 use std::process::{Command, ExitStatus};
 use thiserror::Error;
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 
+/// Errors that can occur when building or executing the rsync process.
 #[derive(Debug, Error)]
 pub enum RsyncError {
     #[error("failed to execute rsync: {0}")]
@@ -22,6 +22,9 @@ pub enum RsyncError {
 
 // ── Rsync ────────────────────────────────────────────────────────────────────
 
+/// A configured `rsync` process ready to execute.
+///
+/// Construct with [`Rsync::new`], then call [`Rsync::run`] to execute the transfer.
 pub struct Rsync {
     cmd: Command,
 }
@@ -78,10 +81,8 @@ impl Rsync {
         }
 
         // Log file is always local (rsync writes it on the machine it runs on).
+        // The log directory is created by the caller before invoking rsync.
         if let Some(log_path) = layout.log_path() {
-            if let Some(parent) = log_path.parent() {
-                fs::create_dir_all(parent).ok();
-            }
             cmd.arg("--log-file").arg(log_path);
         }
 

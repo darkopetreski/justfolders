@@ -24,6 +24,10 @@ pub struct BackupLayout<'a> {
 }
 
 impl<'a> BackupLayout<'a> {
+    /// Creates a new layout for the given config, capturing the current timestamp.
+    ///
+    /// The timestamp is fixed at construction time so every path derived during
+    /// the same backup run shares the same value.
     pub fn new(config: &'a Config) -> Self {
         Self {
             backend: from_config(config),
@@ -98,6 +102,16 @@ impl<'a> BackupLayout<'a> {
     }
 
     // ── Logging ──────────────────────────────────────────────────────────────
+
+    /// Creates the parent directory for the log file, if logging is enabled.
+    /// Does nothing if logging is disabled or the directory already exists.
+    pub fn prepare_log_dir(&self) {
+        if let Some(log_path) = self.log_path() {
+            if let Some(parent) = log_path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+        }
+    }
 
     /// Returns the local path for the rsync `--log-file` argument, or `None`
     /// if logging is disabled.

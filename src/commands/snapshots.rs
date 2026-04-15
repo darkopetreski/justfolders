@@ -3,6 +3,7 @@ use crate::core::parser::SnapshotsArgs;
 use crate::core::storage_backend::from_config;
 use thiserror::Error;
 
+/// Errors that can occur when listing snapshots.
 #[derive(Debug, Error)]
 pub enum SnapshotsError {
     #[error(transparent)]
@@ -12,6 +13,7 @@ pub enum SnapshotsError {
     Backend(#[from] crate::core::storage_backend::StorageBackendError),
 }
 
+/// Lists all available snapshots at the backup destination and prints them to stdout.
 pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     let config = Config::load(&args.config)?;
 
