@@ -57,6 +57,21 @@ impl<'a> BackupLayout<'a> {
         self.config.dest.join(LATEST_NAME)
     }
 
+    /// Bare path of the `latest` symlink for use as `--link-dest`.
+    ///
+    /// Unlike [`latest_arg`], this never includes a `user@host:` prefix —
+    /// rsync resolves `--link-dest` relative to the destination host, so only
+    /// the path portion is valid here.
+    ///
+    /// e.g. `/dest/latest` (both local and remote)
+    pub fn link_dest_arg(&self) -> String {
+        format!(
+            "{}/{}",
+            self.config.dest.path_str().trim_end_matches('/'),
+            LATEST_NAME
+        )
+    }
+
     /// Path of the timestamped snapshot folder that `tmp` will be renamed to
     /// after a successful rsync.
     ///

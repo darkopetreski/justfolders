@@ -73,7 +73,7 @@ impl Rsync {
         // Hard-link unchanged files against the previous snapshot only when
         // `latest` actually exists (skipped on the very first run).
         if layout.backend().latest_exists()? {
-            cmd.arg("--link-dest").arg(layout.latest_arg());
+            cmd.arg("--link-dest").arg(layout.link_dest_arg());
         }
 
         // Log file is always local (rsync writes it on the machine it runs on).

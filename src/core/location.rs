@@ -66,6 +66,16 @@ impl Location {
         }
     }
 
+    /// Returns just the filesystem path component, without any `user@host:` prefix.
+    ///
+    /// Useful when building arguments that must be a bare path (e.g. `--link-dest`).
+    pub fn path_str(&self) -> &str {
+        match &self.kind {
+            LocationKind::Local(p) => p.to_str().unwrap_or(""),
+            LocationKind::Remote { path, .. } => path.as_str(),
+        }
+    }
+
     /// Returns the local `PathBuf` for this location, or `None` if it is remote.
     ///
     /// Use this when you need to perform local filesystem operations (rename,
@@ -140,13 +150,14 @@ impl FromStr for Location {
         // }
 
         if let Some((userhost, path)) = s.split_once(':') {
+            let path = path.trim_end_matches('/').to_string();
             if let Some((user, host)) = userhost.split_once('@') {
                 return Ok(Location {
                     original: original.clone(),
                     kind: LocationKind::Remote {
                         user: user.to_string(),
                         host: host.to_string(),
-                        path: path.to_string(),
+                        path,
                     },
                 });
             }
@@ -156,7 +167,7 @@ impl FromStr for Location {
                 kind: LocationKind::Remote {
                     user: String::new(), // SSH config provides the user
                     host: userhost.to_string(),
-                    path: path.to_string(),
+                    path,
                 },
             });
         }
