@@ -12,11 +12,47 @@ No agents.
 No proprietary formats.
 Just folders.
 
+## Usage
+
+### 1. Generate a config file
+
+```bash
+justfolders init --config backup.ini \
+  --src /home/user \
+  --dest my-backup-server:/backups
+```
+
+Optional flags: `--port`, `--id-rsa`, `--log-dir`, `--exclude-from`, `--disable-logs`,
+`--keep-daily N`, `--keep-weekly N`, `--keep-monthly N`, `--keep-yearly N`, and more.
+Use `--dry-run` to print the generated config to stdout without saving it.
+
+### 2. Run a backup
+
+```bash
+justfolders backup --config backup.ini
+```
+
+On the first run a `tmp/` directory is created at the destination. On success it is
+renamed to a timestamped snapshot (e.g. `2025-04-15-120000`) and a `latest` symlink is
+updated. If the run is interrupted, the next invocation resumes into the same `tmp/`
+using `--delete` and `--link-dest`, so the directory is always brought to a consistent
+state before being promoted.
+
+**Do not run two instances against the same destination simultaneously** — both write
+to the same `tmp/` and will corrupt each other's work.
+
+### 3. List snapshots
+
+```bash
+justfolders snapshots --config backup.ini
+```
+
 ## SSH Key Configuration
 
 JustFolders delegates all remote connections to rsync and SSH.
-Rather than accepting a private key path as a CLI argument, key configuration
-is handled through your SSH config file — which is the standard and most flexible approach.
+You can supply a private key either via `--id-rsa` in the `init` command (written into
+the config file as `id_rsa = ...`) or by configuring it in your SSH config file, which
+is the most flexible approach for complex setups.
 
 ### Authorizing the key on the server
 
@@ -55,10 +91,10 @@ IdentityFile ~/.ssh/my_backup_key
 Port 22
 ```
 
-Then use the hostname alias directly as your destination:
+Then use the hostname alias directly in your config:
 
 ```bash
-justfolders backup /home/user my-backup-server:/backups
+justfolders init --config backup.ini --src /home/user --dest my-backup-server:/backups
 ```
 
 ### Generating a dedicated backup key
