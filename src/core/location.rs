@@ -112,6 +112,15 @@ impl FromStr for Location {
     /// - Remote paths:
     ///   - `user@host:/absolute/path`
     ///
+    /// # Trailing slash
+    ///
+    /// [`Location::original`] always ends with `/`, regardless of whether the
+    /// input did. This is intentional: when `original` is passed to rsync as
+    /// the **source** argument, a trailing slash tells rsync to copy the
+    /// *contents* of the directory rather than the directory itself. Without it
+    /// rsync would nest the source folder inside the destination on every run,
+    /// producing `dest/src/files` instead of `dest/files`.
+    ///
     /// # Errors
     ///
     /// Returns [`LocationParseError::InvalidRemote`] if the string contains `:`
