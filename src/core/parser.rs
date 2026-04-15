@@ -30,6 +30,7 @@ pub struct CliParams {
     pub command: Commands,
 }
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)] // Commands is constructed once at startup; size is not a concern
 pub enum Commands {
     /// Run a backup job using the config file.
     Backup(BackupArgs),

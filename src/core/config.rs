@@ -1,15 +1,12 @@
 use crate::core::location::Location;
 use configparser::ini::Ini;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("config file not found at {0}")]
-    NotFound(String),
-
     #[error("failed to read config file at {path}: {reason}")]
     ReadError { path: String, reason: String },
 
@@ -81,7 +78,7 @@ impl RetentionPolicy {
 impl Config {
     /// Load config from a path. If the path is just a name (no directory
     /// component), look for it in the current directory.
-    pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
+    pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let path = resolve_path(path);
 
         let mut ini = Ini::new();
@@ -288,7 +285,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
 
 // ── Saving ─────────────────────────────────────────────────────────────────
 
-pub fn save_config(content: &str, path: &PathBuf) -> Result<(), ConfigError> {
+pub fn save_config(content: &str, path: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| ConfigError::WriteError {
             path: path.display().to_string(),
@@ -308,7 +305,7 @@ pub fn save_config(content: &str, path: &PathBuf) -> Result<(), ConfigError> {
 
 /// If the path has no directory component, resolve it relative to the
 /// current directory. Otherwise use the full path as provided.
-pub fn resolve_path(path: &PathBuf) -> PathBuf {
+pub fn resolve_path(path: &Path) -> PathBuf {
     let with_ext = ensure_ini_extension(path);
     if with_ext.components().count() == 1 {
         // just a filename, no directory — look in current directory
@@ -320,9 +317,9 @@ pub fn resolve_path(path: &PathBuf) -> PathBuf {
     }
 }
 
-pub fn ensure_ini_extension(path: &PathBuf) -> PathBuf {
+pub fn ensure_ini_extension(path: &Path) -> PathBuf {
     match path.extension() {
-        Some(ext) if ext == "ini" => path.clone(),
+        Some(ext) if ext == "ini" => path.to_path_buf(),
         _ => path.with_extension("ini"),
     }
 }
