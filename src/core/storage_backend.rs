@@ -185,14 +185,42 @@ impl StorageBackend for RemoteBackend {
         Ok(status.success())
     }
 
-    /// Creates `<dest>/backup.lock/` atomically on the remote host via `mkdir` over SSH
-    /// and writes the remote shell's PID inside it.
+    /// Creates `<dest>/backup.lock/` on the remote host and writes the **local** PID into it.
+    ///
+    /// Using the local PID means liveness can be checked locally with [`is_process_alive`],
+    /// avoiding complex remote shell logic. Two SSH calls are made: one to read any existing
+    /// PID, and one to (re)create the lock directory with the current PID.
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let path = self.path.trim_end_matches('/');
         let lock = format!("{path}/backup.lock");
-        // mkdir fails with a non-zero exit code if the directory already exists.
-        let cmd = format!("mkdir '{lock}' && echo $$ > '{lock}/pid'");
-        let output = self.ssh_command().arg(&cmd).output()?;
+
+        // Read the PID left by a previous run (empty output if no lock exists).
+        let output = self
+            .ssh_command()
+            .arg(format!("cat '{lock}/pid' 2>/dev/null"))
+            .output()?;
+        let pid = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u32>()
+            .ok();
+
+        if let Some(pid) = pid {
+            if is_process_alive(pid) {
+                return Err(StorageBackendError::LockContended(format!(
+                    "{}:{}",
+                    self.host, lock
+                )));
+            }
+        }
+
+        // No lock or stale lock — (re)create it with the local PID.
+        let local_pid = std::process::id();
+        let output = self
+            .ssh_command()
+            .arg(format!(
+                "rm -rf '{lock}' && mkdir '{lock}' && echo {local_pid} > '{lock}/pid'"
+            ))
+            .output()?;
         if !output.status.success() {
             return Err(StorageBackendError::LockContended(format!(
                 "{}:{}",
@@ -213,6 +241,24 @@ impl StorageBackend for RemoteBackend {
             ));
         }
         Ok(())
+    }
+}
+
+/// Returns `true` if the process with the given PID is still running.
+///
+/// On Linux every live process has a `/proc/<pid>` directory that disappears
+/// the moment the process exits, so checking its existence is enough.
+/// On other platforms the check is not supported and returns `false`,
+/// which causes any existing lock to be treated as stale.
+fn is_process_alive(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        false
     }
 }
 
@@ -271,12 +317,30 @@ impl StorageBackend for LocalBackend {
         Ok(latest.exists() || latest.is_symlink())
     }
 
-    /// Creates `<dest>/backup.lock/` atomically and writes the process ID inside it.
+    /// Creates `<dest>/backup.lock/` and writes the current PID inside it.
+    ///
+    /// If the directory already exists, the PID file is read and checked with
+    /// `kill -0`. A stale lock (process no longer alive) is removed automatically
+    /// before the new lock is created. A live lock returns [`StorageBackendError::LockContended`].
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let lock = self.path.join("backup.lock");
+
+        if lock.exists() {
+            let pid_str = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
+            let pid = pid_str.trim().parse::<u32>().ok();
+            let still_alive = pid.map(is_process_alive).unwrap_or(false);
+
+            if still_alive {
+                return Err(StorageBackendError::LockContended(
+                    lock.display().to_string(),
+                ));
+            }
+            // Stale lock — the process is gone; remove it and proceed.
+            std::fs::remove_dir_all(&lock)?;
+        }
+
         std::fs::create_dir(&lock)
             .map_err(|_| StorageBackendError::LockContended(lock.display().to_string()))?;
-        // Non-fatal: the directory itself is the lock; the pid file is informational.
         let _ = std::fs::write(lock.join("pid"), std::process::id().to_string());
         Ok(())
     }
