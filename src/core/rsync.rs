@@ -63,6 +63,13 @@ impl Rsync {
             cmd.arg("--exclude-from").arg(file);
         }
 
+        // TO ADD BANDWIDTH LIMIT: add a `bwlimit: Option<u32>` field (KB/s) to `Config`,
+        // expose it via `init --bwlimit <KB/s>`, and uncomment the line below:
+        //
+        //   if let Some(bwlimit) = config.bwlimit { cmd.arg(format!("--bwlimit={bwlimit}")); }
+        //
+        // That is the only change needed — rsync handles the throttling internally.
+
         // SSH transport: port + optional identity file.
         // The key path is single-quoted so spaces in the path are handled correctly.
         if config.src.is_remote() || config.dest.is_remote() {

@@ -78,5 +78,27 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
         layout.timestamp_arg()
     );
 
+    // TO ADD EMAIL NOTIFICATIONS: wrap the body of this function in a helper that
+    // returns Result, capture the outcome, and send a one-liner email before returning:
+    //
+    //   match outcome {
+    //       Ok(_)  => send_mail(to, "Backup OK",     &format!("{} succeeded", config.src.original)),
+    //       Err(e) => send_mail(to, "Backup FAILED", &e.to_string()),
+    //   }
+    //
+    // The simplest send_mail implementation needs no external crate — just shell out to
+    // the system `mail` (or `sendmail`) command which is available on every Unix server:
+    //
+    //   fn send_mail(to: &str, subject: &str, body: &str) {
+    //       let _ = std::process::Command::new("mail")
+    //           .arg("-s").arg(subject)
+    //           .arg(to)
+    //           .stdin(std::process::Stdio::piped())
+    //           // pipe body via stdin: write body to child stdin after spawning
+    //           .spawn();
+    //   }
+    //
+    // `to` would come from a `notify_email: Option<String>` field in `Config`.
+
     Ok(())
 }

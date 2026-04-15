@@ -77,6 +77,38 @@ No manual intervention is needed.
 justfolders snapshots --config backup.ini
 ```
 
+### 4. Restore
+
+There is no restore command — and there does not need to be one.
+
+Every snapshot is a plain directory containing your files exactly as they were at that
+point in time. To restore, just copy what you need using any standard tool:
+
+```bash
+# Restore a single file
+cp /backups/2025-04-15-120000/home/user/document.txt /home/user/document.txt
+
+# Restore an entire directory
+cp -r /backups/2025-04-15-120000/home/user/projects /home/user/projects
+
+# Use rsync for a full restore with progress
+rsync -av /backups/latest/ /home/user/
+```
+
+For remote destinations, use the same approach over SSH or rsync:
+
+```bash
+# Restore a single file from a remote backup
+scp my-backup-server:/backups/2025-04-15-120000/home/user/document.txt /home/user/document.txt
+
+# Full restore from remote with rsync
+rsync -av my-backup-server:/backups/latest/ /home/user/
+```
+
+Because snapshots are plain folders, you can also browse them in any file manager,
+open files directly without any extraction step, or restore on a machine that has never
+had JustFolders installed. No special software is needed — ever.
+
 ## SSH Key Configuration
 
 JustFolders delegates all remote connections to rsync and SSH.
