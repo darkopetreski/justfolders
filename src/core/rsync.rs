@@ -60,11 +60,12 @@ impl Rsync {
             cmd.arg("--exclude-from").arg(file);
         }
 
-        // SSH transport: port + optional identity file
+        // SSH transport: port + optional identity file.
+        // The key path is single-quoted so spaces in the path are handled correctly.
         if config.src.is_remote() || config.dest.is_remote() {
             let mut ssh_cmd = format!("ssh -p {}", config.port);
             if let Some(ref key) = config.id_rsa {
-                ssh_cmd.push_str(&format!(" -i {}", key.display()));
+                ssh_cmd.push_str(&format!(" -i '{}'", key.display()));
             }
             cmd.arg("-e").arg(ssh_cmd);
             cmd.arg("--compress");
@@ -87,6 +88,8 @@ impl Rsync {
         cmd.arg(&config.src.original);
         cmd.arg(layout.in_progress_arg());
 
+        // Intentional: prints the full rsync invocation before execution so the
+        // user can see exactly what is being run. Do not remove.
         println!("rsync command: {:?}", cmd);
 
         Ok(cmd)

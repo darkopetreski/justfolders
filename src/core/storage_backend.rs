@@ -4,9 +4,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StorageBackendError {
-    #[error("backup.marker not found at {0}; create it with: touch {0}/backup.marker")]
-    MissingMarker(String),
-
     #[error("snapshot directory not found: {0}")]
     MissingSnapshot(String),
 
@@ -20,9 +17,6 @@ pub enum StorageBackendError {
 pub trait StorageBackend {
     /// List all snapshot directories in the destination (format: YYYY-MM-DD-HHMMSS).
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError>;
-
-    /// Check that backup.marker exists in the destination, error if not.
-    //fn ensure_marker(&self) -> Result<(), StorageBackendError>;
 
     /// Delete a snapshot directory by name.
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError>;
@@ -85,16 +79,6 @@ impl RemoteBackend {
 }
 
 impl StorageBackend for RemoteBackend {
-    // fn ensure_marker(&self) -> Result<(), StorageBackendError> {
-    //     let check = format!("test -f '{}/backup.marker'", self.path);
-    //     let status = self.ssh_command().arg(&check).status()?;
-
-    //     if !status.success() {
-    //         return Err(StorageBackendError::MissingMarker(self.path.clone()));
-    //     }
-    //     Ok(())
-    // }
-
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError> {
         let path = self.path.trim_end_matches('/');
         let cmd = format!(
@@ -164,16 +148,6 @@ impl StorageBackend for RemoteBackend {
 }
 
 impl StorageBackend for LocalBackend {
-    // fn ensure_marker(&self) -> Result<(), StorageBackendError> {
-    //     let marker = self.path.join("backup.marker");
-    //     if !marker.exists() {
-    //         return Err(StorageBackendError::MissingMarker(
-    //             self.path.display().to_string(),
-    //         ));
-    //     }
-    //     Ok(())
-    // }
-
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError> {
         let mut snapshots = vec![];
         for entry in std::fs::read_dir(&self.path)? {

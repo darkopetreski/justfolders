@@ -1,7 +1,10 @@
+use justfolders::commands::backup::{BackupError, run as backup_run};
 use justfolders::core::config::{Config, RetentionPolicy};
-use justfolders::core::storage_backend::{StorageBackendError, from_config};
+use justfolders::core::parser::BackupArgs;
+use justfolders::core::storage_backend::from_config;
 use std::fs;
 use tempfile::TempDir;
+
 
 fn make_local_config(dest: &str) -> Config {
     Config {
@@ -82,4 +85,24 @@ fn latest_symlink_is_created_and_updated() {
     backend.update_latest_symlink(snap2).expect("update symlink");
     let target = fs::read_link(base.join("latest")).unwrap();
     assert_eq!(target, base.join(snap2));
+}
+
+#[test]
+fn both_remote_is_rejected_before_any_io() {
+    let tmp = TempDir::new().unwrap();
+    let config_path = tmp.path().join("backup.ini");
+
+    fs::write(
+        &config_path,
+        "[default]\nsrc = user@host1:/data\ndest = user@host2:/backups\n",
+    )
+    .unwrap();
+
+    let err = backup_run(BackupArgs { config: config_path })
+        .expect_err("both-remote should be rejected");
+
+    assert!(
+        matches!(err, BackupError::BothRemote),
+        "expected BothRemote, got: {err}"
+    );
 }
