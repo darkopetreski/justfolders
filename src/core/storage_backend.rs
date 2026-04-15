@@ -13,6 +13,12 @@ pub enum StorageBackendError {
 
     #[error("ssh command failed: {0}")]
     Ssh(String),
+
+    /// Returned when `backup.lock/` already exists at the destination, meaning
+    /// another instance is running. The string is the full path to the lock directory.
+    /// If no backup is active (e.g. a previous run crashed), remove it manually.
+    #[error("another backup is already running; if not, remove '{0}' to unlock")]
+    LockContended(String),
 }
 
 /// Abstracts destination-side filesystem operations for both local and remote destinations.
@@ -37,6 +43,20 @@ pub trait StorageBackend {
 
     /// Returns `true` if the `latest` symlink or folder exists in the destination.
     fn latest_exists(&self) -> Result<bool, StorageBackendError>;
+
+    /// Creates a `backup.lock/` directory at the destination root to signal that a
+    /// backup is in progress.
+    ///
+    /// Directory creation is atomic on all POSIX filesystems and NTFS, so the first
+    /// concurrent caller wins and all subsequent ones get [`StorageBackendError::LockContended`].
+    /// A `pid` file is written inside the directory for diagnostics.
+    fn acquire_lock(&self) -> Result<(), StorageBackendError>;
+
+    /// Removes the `backup.lock/` directory created by [`acquire_lock`].
+    ///
+    /// Called automatically by the RAII `BackupLock` guard; safe to call even if the
+    /// lock directory has already been removed.
+    fn release_lock(&self) -> Result<(), StorageBackendError>;
 }
 
 /// [`StorageBackend`] implementation for a local filesystem destination.
@@ -164,6 +184,36 @@ impl StorageBackend for RemoteBackend {
         let status = self.ssh_command().arg(&cmd).status()?;
         Ok(status.success())
     }
+
+    /// Creates `<dest>/backup.lock/` atomically on the remote host via `mkdir` over SSH
+    /// and writes the remote shell's PID inside it.
+    fn acquire_lock(&self) -> Result<(), StorageBackendError> {
+        let path = self.path.trim_end_matches('/');
+        let lock = format!("{path}/backup.lock");
+        // mkdir fails with a non-zero exit code if the directory already exists.
+        let cmd = format!("mkdir '{lock}' && echo $$ > '{lock}/pid'");
+        let output = self.ssh_command().arg(&cmd).output()?;
+        if !output.status.success() {
+            return Err(StorageBackendError::LockContended(format!(
+                "{}:{}",
+                self.host, lock
+            )));
+        }
+        Ok(())
+    }
+
+    /// Removes `<dest>/backup.lock/` on the remote host via `rm -rf` over SSH.
+    fn release_lock(&self) -> Result<(), StorageBackendError> {
+        let path = self.path.trim_end_matches('/');
+        let cmd = format!("rm -rf '{path}/backup.lock'");
+        let status = self.ssh_command().arg(&cmd).status()?;
+        if !status.success() {
+            return Err(StorageBackendError::Ssh(
+                "failed to release backup lock".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl StorageBackend for LocalBackend {
@@ -221,4 +271,22 @@ impl StorageBackend for LocalBackend {
         Ok(latest.exists() || latest.is_symlink())
     }
 
+    /// Creates `<dest>/backup.lock/` atomically and writes the process ID inside it.
+    fn acquire_lock(&self) -> Result<(), StorageBackendError> {
+        let lock = self.path.join("backup.lock");
+        std::fs::create_dir(&lock)
+            .map_err(|_| StorageBackendError::LockContended(lock.display().to_string()))?;
+        // Non-fatal: the directory itself is the lock; the pid file is informational.
+        let _ = std::fs::write(lock.join("pid"), std::process::id().to_string());
+        Ok(())
+    }
+
+    /// Removes `<dest>/backup.lock/` to release the lock.
+    fn release_lock(&self) -> Result<(), StorageBackendError> {
+        let lock = self.path.join("backup.lock");
+        if lock.exists() {
+            std::fs::remove_dir_all(&lock)?;
+        }
+        Ok(())
+    }
 }
