@@ -32,14 +32,44 @@ Use `--dry-run` to print the generated config to stdout without saving it.
 justfolders backup --config backup.ini
 ```
 
-On the first run a `tmp/` directory is created at the destination. On success it is
-renamed to a timestamped snapshot (e.g. `2025-04-15-120000`) and a `latest` symlink is
-updated. If the run is interrupted, the next invocation resumes into the same `tmp/`
-using `--delete` and `--link-dest`, so the directory is always brought to a consistent
-state before being promoted.
+### How a backup run works
 
-**Do not run two instances against the same destination simultaneously** — both write
-to the same `tmp/` and will corrupt each other's work.
+Every backup follows the same three steps:
+
+1. **Lock** — a `backup.lock/` directory is created at the destination root containing
+   the PID of the running process. This prevents two instances from writing to the same
+   destination at the same time.
+
+2. **Transfer** — rsync writes into a `tmp/` directory at the destination.
+   Unchanged files are hard-linked from the `latest` snapshot instead of being copied,
+   so only changed data is transferred.
+
+3. **Promote** — on success, `tmp/` is renamed to a timestamped snapshot folder
+   (e.g. `2025-04-15-120000`) and the `latest` symlink is updated. The lock is released.
+
+### Interrupted and retried backups
+
+If a backup is interrupted for any reason (network drop, Ctrl+C, power loss) the
+`tmp/` directory is left as-is at the destination. This is intentional.
+
+The next run will:
+- Detect the stale `backup.lock/` (the previous PID is no longer alive) and clear it automatically.
+- Resume rsync into the same `tmp/` directory. The `--delete` flag removes anything that
+  should not be there, and `--link-dest` hard-links unchanged files from `latest` as usual.
+- Rename `tmp/` to a snapshot once complete.
+
+There is no manual cleanup required after an interrupted backup. Simply run
+`justfolders backup --config backup.ini` again.
+
+### Concurrent run protection
+
+If a second instance is started while a backup is already running, it reads the PID from
+`backup.lock/pid`, confirms the process is alive, and exits immediately with an error.
+The running backup and its `tmp/` directory are left untouched.
+
+If a `backup.lock/` is left behind by a crash so severe that the process entry is gone
+(e.g. a hard reboot), it is detected as stale on the next run and cleared automatically.
+No manual intervention is needed.
 
 ### 3. List snapshots
 
