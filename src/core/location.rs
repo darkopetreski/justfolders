@@ -34,7 +34,7 @@ impl Location {
     /// # Examples
     ///
     /// ```
-    /// use std::str::FromStr;
+    /// use justfolders::core::location::Location;
     ///
     /// let loc = "user@example.com:/tmp/file".parse::<Location>().unwrap();
     /// assert!(loc.is_remote());
@@ -120,12 +120,12 @@ impl FromStr for Location {
     /// # Examples
     ///
     /// ```
-    /// use std::str::FromStr;
+    /// use justfolders::core::location::Location;
     ///
-    /// let local = Location::from_str("/tmp/file").unwrap();
+    /// let local = "/tmp/file".parse::<Location>().unwrap();
     /// assert!(!local.is_remote());
     ///
-    /// let remote = Location::from_str("user@host:/tmp/file").unwrap();
+    /// let remote = "user@host:/tmp/file".parse::<Location>().unwrap();
     /// assert!(remote.is_remote());
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -134,20 +134,6 @@ impl FromStr for Location {
         } else {
             format!("{}/", s)
         };
-
-        // if let Some((userhost, path)) = original.split_once(':') {
-        //     if let Some((user, host)) = userhost.split_once('@') {
-        //         return Ok(Location {
-        //             original: original.clone(),
-        //             kind: LocationKind::Remote {
-        //                 user: user.to_string(),
-        //                 host: host.to_string(),
-        //                 path: path.to_string(),
-        //             },
-        //         });
-        //     }
-        //     return Err(LocationParseError::InvalidRemote(original));
-        // }
 
         if let Some((userhost, path)) = s.split_once(':') {
             let path = path.trim_end_matches('/').to_string();

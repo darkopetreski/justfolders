@@ -1,43 +1,85 @@
-use justfolders::core::backup::{Backup, BackupError};
-use justfolders::core::parser::CliParams;
+use justfolders::core::config::{Config, RetentionPolicy};
+use justfolders::core::storage_backend::{StorageBackendError, from_config};
 use std::fs;
-// use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
-fn make_params(src: Option<String>, dest: Option<String>) -> CliParams {
-    CliParams {
-        src,
-        dest,
-        ssh_port: 22,
-        disable_logs: false,
-        log_dir: None,
+fn make_local_config(dest: &str) -> Config {
+    Config {
+        src: "/tmp/src".parse().unwrap(),
+        dest: dest.parse().unwrap(),
+        port: 22,
         id_rsa: None,
-        rsync_get_flags: false,
-        rsync_set_flags: "-a".to_string(),
-        rsync_append_flags: None,
+        disable_logs: true,
+        log_dir: None,
         exclude_from: None,
+        rsync_flags: None,
+        policy: RetentionPolicy::default(),
     }
 }
 
-// fn file_name_string(path: &Path) -> String {
-//     path.file_name()
-//         .and_then(|f| f.to_str())
-//         .unwrap_or_default()
-//         .to_string()
-// }
+#[test]
+fn list_snapshots_empty() {
+    let dest_dir = TempDir::new().expect("create temp dir");
+    let config = make_local_config(&dest_dir.path().display().to_string());
+    let backend = from_config(&config);
+
+    let snapshots = backend.list_snapshots().expect("list snapshots");
+    assert!(snapshots.is_empty());
+}
 
 #[test]
-fn backup_marker_checks() {
+fn list_snapshots_returns_only_timestamped_dirs() {
     let dest_dir = TempDir::new().expect("create temp dir");
-    let params = make_params(
-        Some("/tmp/src".to_string()),
-        Some(dest_dir.path().display().to_string()),
-    );
-    let backup = Backup::new(&params);
+    let base = dest_dir.path();
 
-    let err = backup.ensure_marker().expect_err("missing marker should fail");
-    assert!(matches!(err, BackupError::MissingMarker { .. }));
+    fs::create_dir(base.join("2025-01-01-120000")).unwrap();
+    fs::create_dir(base.join("2025-06-15-083045")).unwrap();
+    fs::create_dir(base.join("latest")).unwrap();
+    fs::write(base.join("backup.marker"), "").unwrap();
 
-    fs::write(dest_dir.path().join("backup.marker"), "").expect("create marker");
-    backup.ensure_marker().expect("marker should be accepted");
+    let config = make_local_config(&base.display().to_string());
+    let backend = from_config(&config);
+
+    let mut snapshots = backend.list_snapshots().expect("list snapshots");
+    snapshots.sort();
+    assert_eq!(snapshots, vec!["2025-01-01-120000", "2025-06-15-083045"]);
+}
+
+#[test]
+fn delete_snapshot_removes_dir() {
+    let dest_dir = TempDir::new().expect("create temp dir");
+    let base = dest_dir.path();
+    let snap = "2025-01-01-120000";
+
+    fs::create_dir(base.join(snap)).unwrap();
+    assert!(base.join(snap).exists());
+
+    let config = make_local_config(&base.display().to_string());
+    let backend = from_config(&config);
+
+    backend.delete_snapshot(snap).expect("delete snapshot");
+    assert!(!base.join(snap).exists());
+}
+
+#[test]
+fn latest_symlink_is_created_and_updated() {
+    let dest_dir = TempDir::new().expect("create temp dir");
+    let base = dest_dir.path();
+
+    let config = make_local_config(&base.display().to_string());
+    let backend = from_config(&config);
+
+    assert!(!backend.latest_exists().unwrap());
+
+    let snap1 = "2025-01-01-120000";
+    let snap2 = "2025-06-15-083045";
+    fs::create_dir(base.join(snap1)).unwrap();
+    fs::create_dir(base.join(snap2)).unwrap();
+
+    backend.update_latest_symlink(snap1).expect("create symlink");
+    assert!(backend.latest_exists().unwrap());
+
+    backend.update_latest_symlink(snap2).expect("update symlink");
+    let target = fs::read_link(base.join("latest")).unwrap();
+    assert_eq!(target, base.join(snap2));
 }

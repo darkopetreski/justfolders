@@ -22,7 +22,7 @@ pub trait StorageBackend {
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError>;
 
     /// Check that backup.marker exists in the destination, error if not.
-    fn ensure_marker(&self) -> Result<(), StorageBackendError>;
+    //fn ensure_marker(&self) -> Result<(), StorageBackendError>;
 
     /// Delete a snapshot directory by name.
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError>;
@@ -74,8 +74,6 @@ impl RemoteBackend {
         if let Some(key) = &self.id_rsa {
             cmd.arg("-i").arg(key);
         }
-        //cmd.arg(format!("{}@{}", self.user, self.host));
-        // if user is provided use user@host, otherwise just host (SSH config handles the rest)
         if self.user.is_empty() {
             cmd.arg(&self.host);
         } else {
@@ -87,20 +85,20 @@ impl RemoteBackend {
 }
 
 impl StorageBackend for RemoteBackend {
-    fn ensure_marker(&self) -> Result<(), StorageBackendError> {
-        let check = format!("test -f {}/backup.marker", self.path);
-        let status = self.ssh_command().arg(&check).status()?;
+    // fn ensure_marker(&self) -> Result<(), StorageBackendError> {
+    //     let check = format!("test -f '{}/backup.marker'", self.path);
+    //     let status = self.ssh_command().arg(&check).status()?;
 
-        if !status.success() {
-            return Err(StorageBackendError::MissingMarker(self.path.clone()));
-        }
-        Ok(())
-    }
+    //     if !status.success() {
+    //         return Err(StorageBackendError::MissingMarker(self.path.clone()));
+    //     }
+    //     Ok(())
+    // }
 
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError> {
+        let path = self.path.trim_end_matches('/');
         let cmd = format!(
-            "ls -d {}/[0-9][0-9][0-9][0-9]-* 2>/dev/null | xargs -I{{}} basename {{}}",
-            self.path
+            "ls -d '{path}/'[0-9][0-9][0-9][0-9]-* 2>/dev/null | xargs -I{{}} basename {{}}"
         );
         let output = self.ssh_command().arg(&cmd).output()?;
 
@@ -120,17 +118,21 @@ impl StorageBackend for RemoteBackend {
     }
 
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError> {
-        let cmd = format!("rm -rf {}/{}", self.path, name);
-        let status = self.ssh_command().arg(&cmd).status()?;
-        if !status.success() {
-            return Err(StorageBackendError::MissingSnapshot(name.to_string()));
+        let cmd = format!("rm -rf '{}/{}'", self.path, name);
+        let output = self.ssh_command().arg(&cmd).output()?;
+        if !output.status.success() {
+            return Err(StorageBackendError::Ssh(format!(
+                "failed to delete snapshot '{}': {}",
+                name,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
         Ok(())
     }
 
     fn update_latest_symlink(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
         let cmd = format!(
-            "ln -sfn {}/{} {}/latest",
+            "ln -sfn '{}/{}' '{}/latest'",
             self.path, snapshot_name, self.path
         );
         let status = self.ssh_command().arg(&cmd).status()?;
@@ -143,7 +145,7 @@ impl StorageBackend for RemoteBackend {
     }
 
     fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        let cmd = format!("mv {}/tmp {}/{}", self.path, self.path, snapshot_name);
+        let cmd = format!("mv '{}/tmp' '{}/{}'", self.path, self.path, snapshot_name);
         let status = self.ssh_command().arg(&cmd).status()?;
         if !status.success() {
             return Err(StorageBackendError::Ssh(format!(
@@ -155,23 +157,22 @@ impl StorageBackend for RemoteBackend {
     }
 
     fn latest_exists(&self) -> Result<bool, StorageBackendError> {
-        let cmd = format!("test -e {}/latest", self.path);
+        let cmd = format!("test -e '{}/latest'", self.path);
         let status = self.ssh_command().arg(&cmd).status()?;
         Ok(status.success())
     }
-
 }
 
 impl StorageBackend for LocalBackend {
-    fn ensure_marker(&self) -> Result<(), StorageBackendError> {
-        let marker = self.path.join("backup.marker");
-        if !marker.exists() {
-            return Err(StorageBackendError::MissingMarker(
-                self.path.display().to_string(),
-            ));
-        }
-        Ok(())
-    }
+    // fn ensure_marker(&self) -> Result<(), StorageBackendError> {
+    //     let marker = self.path.join("backup.marker");
+    //     if !marker.exists() {
+    //         return Err(StorageBackendError::MissingMarker(
+    //             self.path.display().to_string(),
+    //         ));
+    //     }
+    //     Ok(())
+    // }
 
     fn list_snapshots(&self) -> Result<Vec<String>, StorageBackendError> {
         let mut snapshots = vec![];
