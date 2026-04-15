@@ -1,6 +1,7 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::parser::BackupArgs;
+use crate::core::retention::apply_policy;
 use crate::core::rsync::{Rsync, RsyncError};
 use crate::core::storage_backend::StorageBackendError;
 use thiserror::Error;
@@ -40,6 +41,12 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     Rsync::new(&config, &layout)?.run()?;
 
     layout.move_in_progress_to_latest()?;
+
+    let snapshots = layout.backend().list_snapshots()?;
+    let to_delete = apply_policy(&config.policy, &snapshots);
+    for name in &to_delete {
+        layout.backend().delete_snapshot(name)?;
+    }
 
     println!(
         "backup complete: {} → {}",
