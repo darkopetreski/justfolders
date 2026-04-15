@@ -56,6 +56,6 @@ pub fn run(args: InitArgs) -> Result<(), InitError> {
     }
 
     save_config(&content, &config_path)?;
-    println!("config saved to {}", config_path.display());
+    println!("Config created, rn the backup now: justfolders backup --config {}", config_path.display());
     Ok(())
 }
