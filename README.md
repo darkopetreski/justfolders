@@ -109,6 +109,71 @@ Because snapshots are plain folders, you can also browse them in any file manage
 open files directly without any extraction step, or restore on a machine that has never
 had JustFolders installed. No special software is needed — ever.
 
+## Storage efficiency and data safety
+
+### How hard-link deduplication works
+
+When a file has not changed since the previous snapshot, justfolders does not copy it
+again — rsync creates a hard link pointing to the same inode on disk. The new snapshot
+appears as a complete directory of files, but unchanged files share physical storage with
+older snapshots.
+
+```
+snapshot_2025-04-01/home/user/photo.jpg  ──┐
+snapshot_2025-04-02/home/user/photo.jpg  ──┤──▶  inode 48291  (one physical copy)
+snapshot_2025-04-03/home/user/photo.jpg  ──┘
+```
+
+The result: you can keep dozens of point-in-time snapshots for roughly the cost of one
+full copy plus the accumulated changes.
+
+### The hard-link and bit-rot tradeoff
+
+Hard-link deduplication is efficient, but it has an important implication: **if the
+underlying inode develops silent corruption (bit-rot), every snapshot that hard-links to
+it is affected at once.** A corrupt inode is a corrupt inode — the number of directory
+entries pointing to it does not matter.
+
+This means:
+
+- Multiple snapshots on the **same disk** protect you against accidental deletion and
+  logical errors, but not against disk-level corruption or hardware failure — if the
+  disk dies, every snapshot dies with it, regardless of how many you kept.
+- To be protected against hardware failure and bit-rot, you need an independent copy
+  on a **different physical device**.
+
+### The 3-2-1 rule
+
+The industry standard for reliable backups is the **3-2-1 rule**:
+
+| | What it means |
+|---|---|
+| **3** copies of your data | original + at least two backups |
+| **2** different storage media | e.g. local disk and a remote server |
+| **1** copy offsite | physically separate from the others |
+
+JustFolders is well-suited as one layer of a 3-2-1 strategy. A practical setup:
+
+```
+Source machine  ──▶  local NAS (justfolders job 1, fast, for quick restores)
+Source machine  ──▶  remote server or cloud (justfolders job 2, offsite, for disasters)
+```
+
+Each job has its own config file and runs independently. The two destinations are on
+different physical hardware, so a corrupted inode on the NAS does not affect the remote
+copy — and vice versa.
+
+### A note on ZFS and btrfs
+
+If your destination filesystem is **ZFS** or **btrfs** with checksumming enabled, it
+performs block-level checksum verification on every read and can detect (and with
+redundancy, repair) silent corruption automatically. This largely eliminates the bit-rot
+risk for files stored on that filesystem.
+
+On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
+Running `justfolders verify` periodically — once implemented — will fill this gap by
+re-checksumming snapshot files against a manifest recorded at backup time.
+
 ## SSH Key Configuration
 
 JustFolders delegates all remote connections to rsync and SSH.

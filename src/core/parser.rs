@@ -40,6 +40,10 @@ pub enum Commands {
 
     /// Generate a config file from provided arguments.
     Init(InitArgs),
+    // TODO: Restore — restore a named snapshot (or `latest`) to a given target directory.
+    //       Suggested flags: --snapshot <NAME|latest>, --dest <DIR>, --path <SUBPATH>
+    //       (--path enables single-file / single-directory restore).
+    //       Implementation: rsync from <snapshot_dir>/ to <target_dir>, same SSH config.
 }
 
 #[derive(Parser, Debug)]
