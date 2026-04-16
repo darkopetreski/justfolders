@@ -1,8 +1,8 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::storage_backend::StorageBackendError;
-use std::io;
-use std::process::{Command, ExitStatus};
+use std::io::{self, Read};
+use std::process::{Command, ExitStatus, Stdio};
 use thiserror::Error;
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -13,8 +13,8 @@ pub enum RsyncError {
     #[error("failed to execute rsync: {0}")]
     Io(#[from] io::Error),
 
-    #[error("rsync exited with non-zero status ({status})")]
-    NonZeroStatus { status: ExitStatus },
+    #[error("rsync exited with non-zero status ({status}){}", if stderr.is_empty() { String::new() } else { format!("\n{stderr}") })]
+    NonZeroStatus { status: ExitStatus, stderr: String },
 
     #[error("failed to check destination state: {0}")]
     Backend(#[from] StorageBackendError),
@@ -39,13 +39,38 @@ impl Rsync {
 
     /// Executes the configured `rsync` command.
     ///
+    /// stdout is inherited (the user sees transfer progress live).
+    /// stderr is captured so error messages can be included in notifications,
+    /// then immediately printed to the terminal so nothing is hidden.
+    ///
     /// # Errors
     /// - [`RsyncError::NonZeroStatus`] — rsync exited with a non-zero code.
+    ///   The captured stderr (e.g. "Permission denied (publickey)") is embedded
+    ///   in the error message and will appear in email notifications.
     /// - [`RsyncError::Io`] — failed to spawn the process.
     pub fn run(&mut self) -> Result<(), RsyncError> {
-        let status = self.cmd.status()?;
+        // Pipe stderr so we can capture it; leave stdout inherited for live progress.
+        // rsync error output is always a few lines — no risk of filling the pipe buffer
+        // before we read it (we wait for the process first, then drain the pipe).
+        self.cmd.stderr(Stdio::piped());
+
+        let mut child = self.cmd.spawn()?;
+
+        // Wait for rsync to finish, then read its stderr.
+        let status = child.wait()?;
+        let mut stderr = String::new();
+        if let Some(mut pipe) = child.stderr.take() {
+            pipe.read_to_string(&mut stderr)?;
+        }
+        let stderr = stderr.trim().to_string();
+
+        // Always mirror stderr to the terminal so the user sees the same output as before.
+        if !stderr.is_empty() {
+            eprintln!("{stderr}");
+        }
+
         if !status.success() {
-            return Err(RsyncError::NonZeroStatus { status });
+            return Err(RsyncError::NonZeroStatus { status, stderr });
         }
         Ok(())
     }
