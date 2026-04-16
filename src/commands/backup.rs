@@ -23,7 +23,9 @@ impl<'a> BackupLock<'a> {
 
 impl Drop for BackupLock<'_> {
     fn drop(&mut self) {
-        let _ = self.backend.release_lock();
+        if let Err(e) = self.backend.release_lock() {
+            eprintln!("warning: failed to release backup lock: {e}");
+        }
     }
 }
 
@@ -57,7 +59,7 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     }
 
     let layout = BackupLayout::new(&config);
-    layout.prepare_log_dir();
+    layout.prepare_log_dir()?;
 
     // Acquire lock before any I/O — released automatically when `_lock` is dropped.
     let _lock = BackupLock::acquire(layout.backend())?;

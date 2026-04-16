@@ -105,12 +105,13 @@ impl<'a> BackupLayout<'a> {
 
     /// Creates the parent directory for the log file, if logging is enabled.
     /// Does nothing if logging is disabled or the directory already exists.
-    pub fn prepare_log_dir(&self) {
+    pub fn prepare_log_dir(&self) -> Result<(), StorageBackendError> {
         if let Some(log_path) = self.log_path() {
             if let Some(parent) = log_path.parent() {
-                std::fs::create_dir_all(parent).ok();
+                std::fs::create_dir_all(parent)?;
             }
         }
+        Ok(())
     }
 
     /// Returns the local path for the rsync `--log-file` argument, or `None`

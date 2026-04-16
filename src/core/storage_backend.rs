@@ -222,9 +222,11 @@ impl StorageBackend for RemoteBackend {
             ))
             .output()?;
         if !output.status.success() {
-            return Err(StorageBackendError::LockContended(format!(
-                "{}:{}",
-                self.host, lock
+            return Err(StorageBackendError::Ssh(format!(
+                "failed to create lock at '{}:{}': {}",
+                self.host,
+                lock,
+                String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
         Ok(())
@@ -339,9 +341,14 @@ impl StorageBackend for LocalBackend {
             std::fs::remove_dir_all(&lock)?;
         }
 
-        std::fs::create_dir(&lock)
-            .map_err(|_| StorageBackendError::LockContended(lock.display().to_string()))?;
-        let _ = std::fs::write(lock.join("pid"), std::process::id().to_string());
+        std::fs::create_dir(&lock).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                StorageBackendError::LockContended(lock.display().to_string())
+            } else {
+                StorageBackendError::Io(e)
+            }
+        })?;
+        std::fs::write(lock.join("pid"), std::process::id().to_string())?;
         Ok(())
     }
 
