@@ -103,6 +103,9 @@ pub struct InitArgs {
     #[arg(long = "exclude-from", value_name = "FILE")]
     pub exclude_from: Option<String>,
 
+    /// Limit transfer bandwidth in KB/s (optional, e.g. 1000 = ~1 MB/s).
+    #[arg(long = "bwlimit", value_name = "KB/s")]
+    pub bwlimit: Option<u32>,
 
     /// Number of hourly snapshots to keep.
     #[arg(long = "keep-hourly", value_name = "N")]

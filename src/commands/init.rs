@@ -26,6 +26,7 @@ impl From<InitArgs> for ConfigGeneratorParams {
             log_dir: args.log_dir,
             exclude_from: args.exclude_from,
             rsync_flags: args.rsync_flags,
+            bwlimit: args.bwlimit,
             policy: RetentionPolicy {
                 keep_hourly: args.keep_hourly,
                 keep_daily: args.keep_daily,

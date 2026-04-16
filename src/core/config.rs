@@ -34,6 +34,8 @@ pub struct Config {
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
     pub rsync_flags: Option<String>,
+    /// Maximum transfer bandwidth in KB/s. `None` means unlimited.
+    pub bwlimit: Option<u32>,
     pub policy: RetentionPolicy,
 }
 
@@ -128,6 +130,14 @@ impl Config {
         let exclude_from = ini.get("default", "exclude_from");
         let rsync_flags = ini.get("default", "rsync_flags");
 
+        let bwlimit = ini
+            .getuint("default", "bwlimit")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "bwlimit".to_string(),
+                reason: e,
+            })?
+            .map(|v| v as u32);
+
         let disable_logs = ini
             .getbool("default", "disable_logs")
             .map_err(|e| ConfigError::InvalidValue {
@@ -147,6 +157,7 @@ impl Config {
             log_dir,
             exclude_from,
             rsync_flags,
+            bwlimit,
             policy,
         })
     }
@@ -167,6 +178,8 @@ pub struct ConfigGeneratorParams {
     pub log_dir: Option<PathBuf>,
     pub exclude_from: Option<String>,
     pub rsync_flags: String,
+    /// Maximum transfer bandwidth in KB/s. `None` means unlimited.
+    pub bwlimit: Option<u32>,
     pub policy: RetentionPolicy,
 }
 
@@ -202,6 +215,11 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     let exclude_from = match &params.exclude_from {
         Some(exc) => format!("exclude_from = {}", exc),
         None => "# exclude_from = /etc/justfolders/excludes.txt".to_string(),
+    };
+
+    let bwlimit = match params.bwlimit {
+        Some(kb) => format!("bwlimit = {}", kb),
+        None => "# bwlimit = 0".to_string(),
     };
 
     let p = &params.policy;
@@ -246,6 +264,10 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
 
         # Path to rsync exclude patterns file (optional)
         {exclude_from}
+
+        # Limit transfer bandwidth in KB/s (optional, 0 = unlimited)
+        # Example: 1000 = ~1 MB/s, 10000 = ~10 MB/s
+        {bwlimit}
 
         # Override default rsync flags (optional)
         # Default: -D --numeric-ids --links --hard-links --one-file-system
