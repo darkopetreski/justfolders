@@ -34,13 +34,15 @@ pub fn send_backup_result(cfg: &SmtpConfig, succeeded: bool, src: &str, detail: 
 }
 
 fn send(cfg: &SmtpConfig, subject: &str, body: &str) -> Result<(), lettre::transport::smtp::Error> {
+    // Both addresses were validated as parseable Mailboxes in SmtpConfig::load,
+    // so these unwraps are safe — a bad address is caught at config load time.
     let email = Message::builder()
-        .from(cfg.from.parse().expect("invalid notify.from address"))
-        .to(cfg.to.parse().expect("invalid notify.to address"))
+        .from(cfg.from.parse().unwrap())
+        .to(cfg.to.parse().unwrap())
         .subject(subject)
         .header(ContentType::TEXT_PLAIN)
         .body(body.to_string())
-        .expect("failed to build email message");
+        .unwrap();
 
     let creds = Credentials::new(cfg.smtp_user.clone(), cfg.smtp_password.clone());
 

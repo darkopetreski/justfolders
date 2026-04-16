@@ -104,9 +104,24 @@ impl SmtpConfig {
             .get("notify", "from")
             .ok_or_else(|| ConfigError::MissingField("notify.from".to_string()))?;
 
+        // Validate the from address is a parseable email address at config load time
+        // so the user gets a clean error rather than a panic during send.
+        from.parse::<lettre::message::Mailbox>()
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "notify.from".to_string(),
+                reason: e.to_string(),
+            })?;
+
         let to = ini
             .get("notify", "to")
             .ok_or_else(|| ConfigError::MissingField("notify.to".to_string()))?;
+
+        // Same validation for the to address.
+        to.parse::<lettre::message::Mailbox>()
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "notify.to".to_string(),
+                reason: e.to_string(),
+            })?;
 
         let tls = match ini.get("notify", "tls") {
             Some(v) => SmtpTls::parse(&v)?,
