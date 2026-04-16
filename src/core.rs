@@ -6,3 +6,4 @@ pub mod rsync;
 pub mod backup_layout;
 pub mod retention;
 pub mod notify;
+pub mod manifest;

@@ -87,6 +87,10 @@ fn do_backup(config: &Config) -> Result<(), BackupError> {
 
     layout.move_in_progress_to_latest()?;
 
+    print!("generating manifest... ");
+    layout.backend().generate_manifest(layout.timestamp())?;
+    println!("done");
+
     let snapshots = layout.backend().list_snapshots()?;
     let to_delete = apply_policy(&config.policy, &snapshots);
     for name in &to_delete {

@@ -40,6 +40,11 @@ pub enum Commands {
 
     /// Generate a config file from provided arguments.
     Init(InitArgs),
+
+    /// Verify the integrity of a snapshot by re-checksumming all files against
+    /// the SHA256SUMS manifest generated at backup time.
+    Verify(VerifyArgs),
+
     // TODO: Restore — restore a named snapshot (or `latest`) to a given target directory.
     //       Suggested flags: --snapshot <NAME|latest>, --dest <DIR>, --path <SUBPATH>
     //       (--path enables single-file / single-directory restore).
@@ -60,6 +65,19 @@ pub struct SnapshotsArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
     pub config: PathBuf,
+}
+
+#[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct VerifyArgs {
+    /// Path to the config file.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+
+    /// Name of the snapshot to verify. Defaults to the most recent snapshot.
+    /// Use the exact timestamp name (e.g. 2025-04-15-120000) or 'latest'.
+    #[arg(long = "snapshot", value_name = "NAME", default_value = "latest")]
+    pub snapshot: String,
 }
 
 #[derive(Parser, Debug)]
