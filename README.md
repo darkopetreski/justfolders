@@ -77,7 +77,55 @@ No manual intervention is needed.
 justfolders snapshots --config backup.ini
 ```
 
-### 4. Restore
+### 4. Verify a snapshot
+
+Re-checksums every file in a snapshot against the manifest recorded at backup time.
+Use this to confirm a snapshot is safe to restore from before you actually need it.
+
+```bash
+# Verify the most recent snapshot
+justfolders verify --config backup.ini
+
+# Verify a specific snapshot
+justfolders verify --config backup.ini --snapshot 2025-04-15-120000
+```
+
+Exits with code 0 if the snapshot is clean, code 1 if any file fails — safe to use
+in scripts and monitoring pipelines.
+
+### 5. Email notifications
+
+justfolders can send an email after every backup run — always on failure,
+optionally on success. Credentials live in the config file only and are never
+passed on the command line.
+
+After running `init`, open the generated `.ini` file and fill in the `[notify]` section:
+
+```ini
+[notify]
+smtp_host     = smtp.example.com
+smtp_port     = 587
+smtp_user     = alerts@example.com
+smtp_password = your-password-here
+from          = justfolders@example.com
+to            = admin@example.com
+tls           = starttls   # starttls (default) | tls | none
+on_success    = false      # set to true to also notify on successful backups
+```
+
+Supported TLS modes:
+
+| Value | Port | Use case |
+|-------|------|----------|
+| `starttls` | 587 | Gmail, most providers (default) |
+| `tls` | 465 | Implicit TLS / some corporate servers |
+| `none` | 25 | Local relay or development only |
+
+If the SMTP send fails (e.g. wrong credentials, unreachable server), a warning is
+printed to stderr and the backup exit code is unaffected — a notification failure
+never masks a backup error.
+
+### 6. Restore
 
 There is no restore command — and there does not need to be one.
 

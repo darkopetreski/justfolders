@@ -63,6 +63,16 @@ pub fn run(args: InitArgs) -> Result<(), InitError> {
     }
 
     save_config(&content, &config_path)?;
-    println!("Config created, run the backup now: justfolders backup --config {}", config_path.display());
+
+    let path = config_path.display();
+    println!("Config saved: {path}");
+    println!();
+    println!("Run a backup:");
+    println!("  justfolders backup --config {path}");
+    println!();
+    println!("To enable email notifications on failure, open {path}");
+    println!("and fill in the [notify] section with your SMTP credentials.");
+    println!("Credentials are kept in the file only — never passed on the command line.");
+
     Ok(())
 }
