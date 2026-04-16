@@ -37,6 +37,101 @@ pub struct Config {
     /// Maximum transfer bandwidth in KB/s. `None` means unlimited.
     pub bwlimit: Option<u32>,
     pub policy: RetentionPolicy,
+    /// Optional SMTP notification settings. `None` means notifications are disabled.
+    pub notify: Option<SmtpConfig>,
+}
+
+/// TLS mode used when connecting to the SMTP server.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SmtpTls {
+    /// STARTTLS on port 587 (recommended for most providers).
+    StartTls,
+    /// Implicit TLS on port 465.
+    Tls,
+    /// No encryption — for local relays / development only.
+    None,
+}
+
+impl SmtpTls {
+    fn parse(s: &str) -> Result<Self, ConfigError> {
+        match s.trim().to_lowercase().as_str() {
+            "starttls" => Ok(Self::StartTls),
+            "tls" => Ok(Self::Tls),
+            "none" => Ok(Self::None),
+            other => Err(ConfigError::InvalidValue {
+                field: "tls".to_string(),
+                reason: format!("expected 'starttls', 'tls', or 'none'; got '{other}'"),
+            }),
+        }
+    }
+}
+
+/// SMTP settings loaded from the `[notify]` section of the config file.
+#[derive(Debug, Clone)]
+pub struct SmtpConfig {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub from: String,
+    pub to: String,
+    /// TLS mode. Defaults to [`SmtpTls::StartTls`].
+    pub tls: SmtpTls,
+    /// Send a notification even when the backup succeeds. Defaults to `false`.
+    pub on_success: bool,
+}
+
+impl SmtpConfig {
+    fn load(ini: &Ini) -> Result<Option<Self>, ConfigError> {
+        // If the section is absent entirely, notifications are disabled.
+        let smtp_host = match ini.get("notify", "smtp_host") {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let smtp_port = ini
+            .getuint("notify", "smtp_port")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "smtp_port".to_string(),
+                reason: e,
+            })?
+            .unwrap_or(587) as u16;
+
+        let smtp_user = ini.get("notify", "smtp_user").unwrap_or_default();
+        let smtp_password = ini.get("notify", "smtp_password").unwrap_or_default();
+
+        let from = ini
+            .get("notify", "from")
+            .ok_or_else(|| ConfigError::MissingField("notify.from".to_string()))?;
+
+        let to = ini
+            .get("notify", "to")
+            .ok_or_else(|| ConfigError::MissingField("notify.to".to_string()))?;
+
+        let tls = match ini.get("notify", "tls") {
+            Some(v) => SmtpTls::parse(&v)?,
+            None => SmtpTls::StartTls,
+        };
+
+        let on_success = ini
+            .getbool("notify", "on_success")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "on_success".to_string(),
+                reason: e,
+            })?
+            .unwrap_or(false);
+
+        Ok(Some(SmtpConfig {
+            smtp_host,
+            smtp_port,
+            smtp_user,
+            smtp_password,
+            from,
+            to,
+            tls,
+            on_success,
+        }))
+    }
 }
 
 /// Snapshot retention rules loaded from the `[policy]` section of the config file.
@@ -147,6 +242,7 @@ impl Config {
             .unwrap_or(false);
 
         let policy = RetentionPolicy::load(&ini)?;
+        let notify = SmtpConfig::load(&ini)?;
 
         Ok(Config {
             src,
@@ -159,6 +255,7 @@ impl Config {
             rsync_flags,
             bwlimit,
             policy,
+            notify,
         })
     }
 }
@@ -305,6 +402,19 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
 
         # Keep all snapshots within the last N years (0 = disabled)
         {keep_within_yearly}
+
+        [notify]
+        # Send email notifications on backup failure (and optionally success).
+        # Remove the '#' from the lines below and fill in your SMTP details to enable.
+        #
+        # smtp_host     = smtp.example.com
+        # smtp_port     = 587
+        # smtp_user     = alerts@example.com
+        # smtp_password = secret
+        # from          = justfolders@example.com
+        # to            = admin@example.com
+        # tls           = starttls   # starttls (default) | tls | none
+        # on_success    = false      # set to true to also notify on successful backups
         ",
         src = params.src.original,
         dest = params.dest.original,

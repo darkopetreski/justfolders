@@ -1,5 +1,6 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
+use crate::core::notify;
 use crate::core::parser::BackupArgs;
 use crate::core::retention::apply_policy;
 use crate::core::rsync::{Rsync, RsyncError};
@@ -51,6 +52,10 @@ pub enum BackupError {
 }
 
 /// Runs a full backup: loads the config, validates it, runs rsync, and finalizes the snapshot.
+///
+/// If `[notify]` is configured, an email is sent after every run:
+/// - always on failure
+/// - on success only when `on_success = true`
 pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     let config = Config::load(&args.config)?;
 
@@ -58,13 +63,27 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
         return Err(BackupError::BothRemote);
     }
 
-    let layout = BackupLayout::new(&config);
+    let src = config.src.original.clone();
+    let outcome = do_backup(&config);
+
+    if let Some(ref smtp) = config.notify {
+        match &outcome {
+            Ok(_) => notify::send_backup_result(smtp, true, &src, ""),
+            Err(e) => notify::send_backup_result(smtp, false, &src, &e.to_string()),
+        }
+    }
+
+    outcome
+}
+
+fn do_backup(config: &Config) -> Result<(), BackupError> {
+    let layout = BackupLayout::new(config);
     layout.prepare_log_dir()?;
 
     // Acquire lock before any I/O — released automatically when `_lock` is dropped.
     let _lock = BackupLock::acquire(layout.backend())?;
 
-    Rsync::new(&config, &layout)?.run()?;
+    Rsync::new(config, &layout)?.run()?;
 
     layout.move_in_progress_to_latest()?;
 
@@ -79,28 +98,6 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
         config.src.original,
         layout.timestamp_arg()
     );
-
-    // TO ADD EMAIL NOTIFICATIONS: wrap the body of this function in a helper that
-    // returns Result, capture the outcome, and send a one-liner email before returning:
-    //
-    //   match outcome {
-    //       Ok(_)  => send_mail(to, "Backup OK",     &format!("{} succeeded", config.src.original)),
-    //       Err(e) => send_mail(to, "Backup FAILED", &e.to_string()),
-    //   }
-    //
-    // The simplest send_mail implementation needs no external crate — just shell out to
-    // the system `mail` (or `sendmail`) command which is available on every Unix server:
-    //
-    //   fn send_mail(to: &str, subject: &str, body: &str) {
-    //       let _ = std::process::Command::new("mail")
-    //           .arg("-s").arg(subject)
-    //           .arg(to)
-    //           .stdin(std::process::Stdio::piped())
-    //           // pipe body via stdin: write body to child stdin after spawning
-    //           .spawn();
-    //   }
-    //
-    // `to` would come from a `notify_email: Option<String>` field in `Config`.
 
     Ok(())
 }
