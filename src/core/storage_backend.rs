@@ -3,6 +3,10 @@ use crate::core::manifest::{self, VerifyReport};
 use std::path::PathBuf;
 use thiserror::Error;
 
+const IN_PROGRESS_NAME: &str = "tmp";
+const LATEST_NAME: &str = "latest";
+const LOCK_NAME: &str = "backup.lock";
+
 /// Errors from destination-side storage operations (local filesystem or SSH).
 #[derive(Debug, Error)]
 pub enum StorageBackendError {
@@ -168,8 +172,8 @@ impl StorageBackend for RemoteBackend {
     /// Updates the `latest` symlink on the remote host via `ln -sfn` over SSH.
     fn update_latest_symlink(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
         let cmd = format!(
-            "ln -sfn '{}/{}' '{}/latest'",
-            self.path, snapshot_name, self.path
+            "ln -sfn '{}/{}' '{}/{}'",
+            self.path, snapshot_name, self.path, LATEST_NAME
         );
         let status = self.ssh_command().arg(&cmd).status()?;
         if !status.success() {
@@ -182,7 +186,7 @@ impl StorageBackend for RemoteBackend {
 
     /// Renames `tmp` to the final snapshot name on the remote host via `mv` over SSH.
     fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        let cmd = format!("mv '{}/tmp' '{}/{}'", self.path, self.path, snapshot_name);
+        let cmd = format!("mv '{}/{}' '{}/{}'", self.path, IN_PROGRESS_NAME, self.path, snapshot_name);
         let status = self.ssh_command().arg(&cmd).status()?;
         if !status.success() {
             return Err(StorageBackendError::Ssh(format!(
@@ -195,7 +199,7 @@ impl StorageBackend for RemoteBackend {
 
     /// Checks whether the `latest` entry exists on the remote host via `test -e` over SSH.
     fn latest_exists(&self) -> Result<bool, StorageBackendError> {
-        let cmd = format!("test -e '{}/latest'", self.path);
+        let cmd = format!("test -e '{}/{}'", self.path, LATEST_NAME);
         let status = self.ssh_command().arg(&cmd).status()?;
         Ok(status.success())
     }
@@ -207,7 +211,7 @@ impl StorageBackend for RemoteBackend {
     /// PID, and one to (re)create the lock directory with the current PID.
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let path = self.path.trim_end_matches('/');
-        let lock = format!("{path}/backup.lock");
+        let lock = format!("{path}/{LOCK_NAME}");
 
         // Read the PID left by a previous run (empty output if no lock exists).
         let output = self
@@ -250,7 +254,7 @@ impl StorageBackend for RemoteBackend {
     /// Removes `<dest>/backup.lock/` on the remote host via `rm -rf` over SSH.
     fn release_lock(&self) -> Result<(), StorageBackendError> {
         let path = self.path.trim_end_matches('/');
-        let cmd = format!("rm -rf '{path}/backup.lock'");
+        let cmd = format!("rm -rf '{path}/{LOCK_NAME}'");
         let status = self.ssh_command().arg(&cmd).status()?;
         if !status.success() {
             return Err(StorageBackendError::Ssh(
@@ -374,7 +378,7 @@ impl StorageBackend for LocalBackend {
     /// Removes any existing `latest` entry and creates a new directory symlink pointing
     /// to the given snapshot.
     fn update_latest_symlink(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        let latest = self.path.join("latest");
+        let latest = self.path.join(LATEST_NAME);
         let target = self.path.join(snapshot_name);
 
         if latest.exists() || latest.is_symlink() {
@@ -391,7 +395,7 @@ impl StorageBackend for LocalBackend {
 
     /// Renames `tmp` to the final snapshot name using [`std::fs::rename`].
     fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        let from = self.path.join("tmp");
+        let from = self.path.join(IN_PROGRESS_NAME);
         let to = self.path.join(snapshot_name);
         std::fs::rename(&from, &to)?;
         Ok(())
@@ -399,7 +403,7 @@ impl StorageBackend for LocalBackend {
 
     /// Returns `true` if a `latest` entry (symlink or directory) exists in the destination.
     fn latest_exists(&self) -> Result<bool, StorageBackendError> {
-        let latest = self.path.join("latest");
+        let latest = self.path.join(LATEST_NAME);
         Ok(latest.exists() || latest.is_symlink())
     }
 
@@ -409,7 +413,7 @@ impl StorageBackend for LocalBackend {
     /// `kill -0`. A stale lock (process no longer alive) is removed automatically
     /// before the new lock is created. A live lock returns [`StorageBackendError::LockContended`].
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
-        let lock = self.path.join("backup.lock");
+        let lock = self.path.join(LOCK_NAME);
 
         if lock.exists() {
             let pid_str = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
@@ -438,7 +442,7 @@ impl StorageBackend for LocalBackend {
 
     /// Removes `<dest>/backup.lock/` to release the lock.
     fn release_lock(&self) -> Result<(), StorageBackendError> {
-        let lock = self.path.join("backup.lock");
+        let lock = self.path.join(LOCK_NAME);
         if lock.exists() {
             std::fs::remove_dir_all(&lock)?;
         }
