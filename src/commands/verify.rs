@@ -4,6 +4,20 @@ use crate::core::parser::VerifyArgs;
 use crate::core::storage_backend::{from_config, StorageBackendError};
 use thiserror::Error;
 
+/// Expected snapshot name pattern: `YYYY-MM-DD-HHMMSS` (17 chars).
+fn validate_snapshot_arg(name: &str) -> Result<(), VerifyError> {
+    let valid = name.len() == 17
+        && name.chars().enumerate().all(|(i, c)| match i {
+            4 | 7 | 10 => c == '-',
+            _ => c.is_ascii_digit(),
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(VerifyError::InvalidSnapshotArg(name.to_string()))
+    }
+}
+
 /// Errors that can occur during snapshot verification.
 #[derive(Debug, Error)]
 pub enum VerifyError {
@@ -21,6 +35,10 @@ pub enum VerifyError {
     /// error is returned, so main.rs will only show the one-line summary.
     #[error("snapshot '{0}' is corrupt ({1} failure(s) found)")]
     SnapshotCorrupt(String, usize),
+
+    /// Returned when the `--snapshot` argument is not in `YYYY-MM-DD-HHMMSS` format.
+    #[error("invalid --snapshot value '{0}': expected YYYY-MM-DD-HHMMSS format")]
+    InvalidSnapshotArg(String),
 }
 
 /// Verifies a snapshot's integrity and reports any corrupt or missing files.
@@ -40,6 +58,8 @@ pub fn run(args: VerifyArgs) -> Result<(), VerifyError> {
             .last()
             .ok_or(VerifyError::NoSnapshots)?
     } else {
+        // Validate the user-supplied name before passing it into the backend.
+        validate_snapshot_arg(&args.snapshot)?;
         args.snapshot.clone()
     };
 

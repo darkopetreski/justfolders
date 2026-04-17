@@ -79,7 +79,10 @@ fn collect_files(
         if file_type.is_dir() {
             collect_files(root, &path, out, seen)?;
         } else if file_type.is_file() {
-            let rel: PathBuf = path.strip_prefix(root).unwrap().to_path_buf();
+            let rel: PathBuf = path
+                .strip_prefix(root)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+                .to_path_buf();
             let rel_str = rel.to_string_lossy().to_string();
 
             // The manifest must not include itself.
@@ -117,7 +120,26 @@ pub fn verify_local(snapshot_dir: &Path) -> io::Result<VerifyReport> {
 
         // Paths in the manifest are stored as "./<relative>"; strip the prefix.
         let rel = path_str.trim_start_matches("./");
+
+        // Reject any path that could escape the snapshot directory.  A tampered
+        // manifest containing ".." components could otherwise trick the verifier
+        // into hashing files outside the snapshot (information disclosure) or
+        // following an attacker-controlled absolute path.
+        if rel.contains("..") || rel.starts_with('/') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("manifest contains unsafe path: {path_str}"),
+            ));
+        }
+
         let abs = snapshot_dir.join(rel);
+        // Defense-in-depth: confirm the resolved path is still inside the snapshot.
+        if !abs.starts_with(snapshot_dir) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("manifest path escapes snapshot directory: {path_str}"),
+            ));
+        }
 
         if !abs.exists() {
             failures.push(VerifyFailure::Missing {

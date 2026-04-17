@@ -193,6 +193,25 @@ impl RetentionPolicy {
     }
 }
 
+/// Returns `ConfigError::InvalidValue` if `value` contains a single-quote character.
+///
+/// Single quotes are used to delimit paths inside remote shell commands (SSH, rsync `-e`).
+/// A single quote inside the path closes the shell quoting prematurely and allows
+/// arbitrary command injection.  Reject such paths at config load time rather than
+/// silently misquoting them later.
+fn reject_single_quote(field: &str, value: &str) -> Result<(), ConfigError> {
+    if value.contains('\'') {
+        Err(ConfigError::InvalidValue {
+            field: field.to_string(),
+            reason: "path must not contain a single-quote character (') \
+                     because it would break remote shell quoting"
+                .to_string(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 impl Config {
     /// Load config from a path. If the path is just a name (no directory
     /// component), look for it in the current directory.
@@ -255,6 +274,21 @@ impl Config {
                 reason: e,
             })?
             .unwrap_or(false);
+
+        // A single-quote in any path that ends up inside a remote shell command
+        // (SSH, rsync -e wrapper) breaks the quoting and enables shell injection.
+        // Reject such paths at load time rather than silently misquoting them later.
+        if src.is_remote() {
+            reject_single_quote("src", src.path_str())?;
+        }
+        if dest.is_remote() {
+            reject_single_quote("dest", dest.path_str())?;
+        }
+        if let Some(ref key) = id_rsa {
+            // id_rsa is embedded as -i '<path>' in the rsync -e shell string.
+            let key_str = key.to_string_lossy();
+            reject_single_quote("id_rsa", &key_str)?;
+        }
 
         let policy = RetentionPolicy::load(&ini)?;
         let notify = SmtpConfig::load(&ini)?;
@@ -458,6 +492,19 @@ pub fn save_config(content: &str, path: &Path) -> Result<(), ConfigError> {
         path: path.display().to_string(),
         reason: e.to_string(),
     })?;
+
+    // Restrict permissions so SMTP credentials stored in the file are not
+    // world-readable.  We intentionally ignore failures here (e.g. on
+    // non-Unix platforms or read-only mounts) — a warning is enough.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            eprintln!(
+                "warning: could not set config file permissions to 0600: {e}"
+            );
+        }
+    }
 
     Ok(())
 }

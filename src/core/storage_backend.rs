@@ -24,6 +24,29 @@ pub enum StorageBackendError {
     /// If no backup is active (e.g. a previous run crashed), remove it manually.
     #[error("another backup is already running; if not, remove '{0}' to unlock")]
     LockContended(String),
+
+    /// Returned when a snapshot name does not match the expected `YYYY-MM-DD-HHMMSS`
+    /// format. Rejects path traversal sequences such as `..` or absolute paths.
+    #[error("invalid snapshot name '{0}': expected YYYY-MM-DD-HHMMSS format")]
+    InvalidSnapshotName(String),
+}
+
+/// Validates that `name` is a safe snapshot name: exactly `YYYY-MM-DD-HHMMSS`
+/// (17 characters, digits everywhere except dashes at positions 4, 7, 10).
+///
+/// This prevents path traversal (`../..`), shell injection, and any attempt to
+/// operate on directories outside the backup root.
+fn validate_snapshot_name(name: &str) -> Result<(), StorageBackendError> {
+    let valid = name.len() == 17
+        && name.chars().enumerate().all(|(i, c)| match i {
+            4 | 7 | 10 => c == '-',
+            _ => c.is_ascii_digit(),
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(StorageBackendError::InvalidSnapshotName(name.to_string()))
+    }
 }
 
 /// Abstracts destination-side filesystem operations for both local and remote destinations.
@@ -157,6 +180,7 @@ impl StorageBackend for RemoteBackend {
 
     /// Deletes the snapshot directory on the remote host via `rm -rf` over SSH.
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(name)?;
         let cmd = format!("rm -rf '{}/{}'", self.path, name);
         let output = self.ssh_command().arg(&cmd).output()?;
         if !output.status.success() {
@@ -171,6 +195,7 @@ impl StorageBackend for RemoteBackend {
 
     /// Updates the `latest` symlink on the remote host via `ln -sfn` over SSH.
     fn update_latest_symlink(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let cmd = format!(
             "ln -sfn '{}/{}' '{}/{}'",
             self.path, snapshot_name, self.path, LATEST_NAME
@@ -186,6 +211,7 @@ impl StorageBackend for RemoteBackend {
 
     /// Renames `tmp` to the final snapshot name on the remote host via `mv` over SSH.
     fn rename_in_progress(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let cmd = format!("mv '{}/{}' '{}/{}'", self.path, IN_PROGRESS_NAME, self.path, snapshot_name);
         let status = self.ssh_command().arg(&cmd).status()?;
         if !status.success() {
@@ -204,40 +230,57 @@ impl StorageBackend for RemoteBackend {
         Ok(status.success())
     }
 
-    /// Creates `<dest>/backup.lock/` on the remote host and writes the **local** PID into it.
+    /// Creates `<dest>/backup.lock/` on the remote host and writes
+    /// `<local-hostname>\n<local-pid>` into `lock/pid`.
     ///
-    /// Using the local PID means liveness can be checked locally with [`is_process_alive`],
-    /// avoiding complex remote shell logic. Two SSH calls are made: one to read any existing
-    /// PID, and one to (re)create the lock directory with the current PID.
+    /// Stale-lock detection:
+    /// - If the lock's hostname matches this machine's hostname **and** the
+    ///   recorded PID is no longer alive, the lock is stale and is cleared
+    ///   automatically.
+    /// - If the lock's hostname is a **different** machine we cannot verify
+    ///   liveness remotely, so we always treat it as a live lock.  A human
+    ///   must remove it manually if the other machine crashed.
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let path = self.path.trim_end_matches('/');
         let lock = format!("{path}/{LOCK_NAME}");
 
-        // Read the PID left by a previous run (empty output if no lock exists).
+        // Read the lock file written by a previous run (two-line format:
+        // first line = hostname, second line = PID).  Empty output means
+        // no lock exists.
         let output = self
             .ssh_command()
             .arg(format!("cat '{lock}/pid' 2>/dev/null"))
             .output()?;
-        let pid = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .parse::<u32>()
-            .ok();
+        let content = String::from_utf8_lossy(&output.stdout);
+        let mut lines = content.lines();
+        let lock_hostname = lines.next().unwrap_or("").trim().to_string();
+        let lock_pid = lines.next().and_then(|s| s.trim().parse::<u32>().ok());
 
-        if let Some(pid) = pid {
-            if is_process_alive(pid) {
+        if !lock_hostname.is_empty() {
+            let my_hostname = local_hostname();
+            let is_stale = if lock_hostname == my_hostname {
+                // Same machine — we can check the PID directly.
+                lock_pid.map(|p| !is_process_alive(p)).unwrap_or(true)
+            } else {
+                // Different machine — conservatively treat as live.
+                false
+            };
+            if !is_stale {
                 return Err(StorageBackendError::LockContended(format!(
-                    "{}:{}",
-                    self.host, lock
+                    "{}:{} (held by {})",
+                    self.host, lock, lock_hostname
                 )));
             }
         }
 
-        // No lock or stale lock — (re)create it with the local PID.
+        // No lock or stale lock — (re)create it with local hostname + PID.
+        let my_hostname = local_hostname();
         let local_pid = std::process::id();
         let output = self
             .ssh_command()
             .arg(format!(
-                "rm -rf '{lock}' && mkdir '{lock}' && echo {local_pid} > '{lock}/pid'"
+                "rm -rf '{lock}' && mkdir '{lock}' \
+                 && printf '%s\\n%s\\n' '{my_hostname}' '{local_pid}' > '{lock}/pid'"
             ))
             .output()?;
         if !output.status.success() {
@@ -269,9 +312,12 @@ impl StorageBackend for RemoteBackend {
     /// Uses `find | sort | xargs sha256sum` so the output is deterministic
     /// regardless of filesystem directory ordering.
     fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let path = format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name);
+        // -P: never follow symlinks; without it a symlink loop on the remote
+        // could cause find to walk outside the snapshot directory.
         let cmd = format!(
-            "cd '{path}' && find . -type f ! -name '{mf}' -print0 \
+            "cd '{path}' && find -P . -type f ! -name '{mf}' -print0 \
              | sort -z | xargs -0 sha256sum > '{mf}'",
             mf = manifest::MANIFEST_FILENAME,
         );
@@ -289,6 +335,7 @@ impl StorageBackend for RemoteBackend {
     ///
     /// Parses the output to build a [`VerifyReport`] without transferring any file data.
     fn verify_snapshot(&self, snapshot_name: &str) -> Result<VerifyReport, StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let path = format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name);
 
         // Check the manifest exists before attempting verification.
@@ -337,9 +384,13 @@ impl StorageBackend for RemoteBackend {
 /// Returns `true` if the process with the given PID is still running.
 ///
 /// On Linux every live process has a `/proc/<pid>` directory that disappears
-/// the moment the process exits, so checking its existence is enough.
-/// On other platforms the check is not supported and returns `false`,
-/// which causes any existing lock to be treated as stale.
+/// Returns `true` if the given process is still running on the **local** machine.
+///
+/// On Linux `/proc/<pid>` disappears the moment the process exits.
+/// On non-Linux we cannot reliably check without adding a C dependency, so we
+/// conservatively report the process as *alive* — this means stale locks on
+/// non-Linux platforms must be removed manually.  That is the safe default
+/// (never silently clobber a concurrent backup).
 fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -348,8 +399,24 @@ fn is_process_alive(pid: u32) -> bool {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = pid;
-        false
+        // Conservative: assume alive so we never auto-clear on unknown platforms.
+        true
     }
+}
+
+/// Returns the hostname of the local machine, normalised to safe characters.
+///
+/// Only alphanumeric characters, hyphens, and dots are kept.  This ensures the
+/// value is safe to embed inside single-quoted shell strings (even though valid
+/// hostnames cannot contain single quotes per RFC 952, we strip them anyway).
+fn local_hostname() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .or_else(|_| std::fs::read_to_string("/etc/hostname"))
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '.')
+        .collect()
 }
 
 impl StorageBackend for LocalBackend {
@@ -370,7 +437,13 @@ impl StorageBackend for LocalBackend {
 
     /// Removes the snapshot directory using [`std::fs::remove_dir_all`].
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(name)?;
         let path = self.path.join(name);
+        // Defense-in-depth: ensure the resolved path is still under self.path.
+        // validate_snapshot_name already forbids "..", but this is an extra guard.
+        if !path.starts_with(&self.path) {
+            return Err(StorageBackendError::InvalidSnapshotName(name.to_string()));
+        }
         std::fs::remove_dir_all(path)?;
         Ok(())
     }
@@ -407,23 +480,34 @@ impl StorageBackend for LocalBackend {
         Ok(latest.exists() || latest.is_symlink())
     }
 
-    /// Creates `<dest>/backup.lock/` and writes the current PID inside it.
+    /// Creates `<dest>/backup.lock/` and writes `<hostname>\n<pid>` inside it.
     ///
-    /// If the directory already exists, the PID file is read and checked with
-    /// `kill -0`. A stale lock (process no longer alive) is removed automatically
-    /// before the new lock is created. A live lock returns [`StorageBackendError::LockContended`].
+    /// Stale-lock detection uses the same hostname-aware logic as the remote
+    /// backend: only auto-clear if the recorded hostname matches this machine
+    /// **and** the PID is no longer alive.  Locks from other hosts must be
+    /// removed manually (consistent with the remote backend's behaviour).
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let lock = self.path.join(LOCK_NAME);
 
         if lock.exists() {
-            let pid_str = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
-            let pid = pid_str.trim().parse::<u32>().ok();
-            let still_alive = pid.map(is_process_alive).unwrap_or(false);
+            let content = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
+            let mut lines = content.lines();
+            let lock_hostname = lines.next().unwrap_or("").trim().to_string();
+            let lock_pid = lines.next().and_then(|s| s.trim().parse::<u32>().ok());
 
-            if still_alive {
-                return Err(StorageBackendError::LockContended(
-                    lock.display().to_string(),
-                ));
+            let my_hostname = local_hostname();
+            let is_stale = if lock_hostname == my_hostname {
+                lock_pid.map(|p| !is_process_alive(p)).unwrap_or(true)
+            } else {
+                false // different host — treat as live
+            };
+
+            if !is_stale {
+                return Err(StorageBackendError::LockContended(format!(
+                    "{} (held by {})",
+                    lock.display(),
+                    if lock_hostname.is_empty() { "unknown" } else { &lock_hostname }
+                )));
             }
             // Stale lock — the process is gone; remove it and proceed.
             std::fs::remove_dir_all(&lock)?;
@@ -436,7 +520,12 @@ impl StorageBackend for LocalBackend {
                 StorageBackendError::Io(e)
             }
         })?;
-        std::fs::write(lock.join("pid"), std::process::id().to_string())?;
+        let my_hostname = local_hostname();
+        let local_pid = std::process::id();
+        std::fs::write(
+            lock.join("pid"),
+            format!("{my_hostname}\n{local_pid}\n"),
+        )?;
         Ok(())
     }
 
@@ -451,14 +540,22 @@ impl StorageBackend for LocalBackend {
 
     /// Generates a `SHA256SUMS` manifest inside the local snapshot directory.
     fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let dir = self.path.join(snapshot_name);
+        if !dir.starts_with(&self.path) {
+            return Err(StorageBackendError::InvalidSnapshotName(snapshot_name.to_string()));
+        }
         manifest::generate_local(&dir)?;
         Ok(())
     }
 
     /// Verifies the local snapshot by re-checksumming against its manifest.
     fn verify_snapshot(&self, snapshot_name: &str) -> Result<VerifyReport, StorageBackendError> {
+        validate_snapshot_name(snapshot_name)?;
         let dir = self.path.join(snapshot_name);
+        if !dir.starts_with(&self.path) {
+            return Err(StorageBackendError::InvalidSnapshotName(snapshot_name.to_string()));
+        }
         let manifest_path = dir.join(manifest::MANIFEST_FILENAME);
         if !manifest_path.exists() {
             return Err(StorageBackendError::MissingSnapshot(format!(

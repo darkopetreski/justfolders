@@ -16,7 +16,9 @@ fn make_local_config(dest: &str) -> Config {
         log_dir: None,
         exclude_from: None,
         rsync_flags: None,
+        bwlimit: None,
         policy: RetentionPolicy::default(),
+        notify: None,
     }
 }
 
