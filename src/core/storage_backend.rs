@@ -230,57 +230,40 @@ impl StorageBackend for RemoteBackend {
         Ok(status.success())
     }
 
-    /// Creates `<dest>/backup.lock/` on the remote host and writes
-    /// `<local-hostname>\n<local-pid>` into `lock/pid`.
+    /// Creates `<dest>/backup.lock/` on the remote host and writes the **local** PID into it.
     ///
-    /// Stale-lock detection:
-    /// - If the lock's hostname matches this machine's hostname **and** the
-    ///   recorded PID is no longer alive, the lock is stale and is cleared
-    ///   automatically.
-    /// - If the lock's hostname is a **different** machine we cannot verify
-    ///   liveness remotely, so we always treat it as a live lock.  A human
-    ///   must remove it manually if the other machine crashed.
+    /// Using the local PID means liveness can be checked locally with [`is_process_alive`],
+    /// avoiding complex remote shell logic. Two SSH calls are made: one to read any existing
+    /// PID, and one to (re)create the lock directory with the current PID.
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let path = self.path.trim_end_matches('/');
         let lock = format!("{path}/{LOCK_NAME}");
 
-        // Read the lock file written by a previous run (two-line format:
-        // first line = hostname, second line = PID).  Empty output means
-        // no lock exists.
+        // Read the PID left by a previous run (empty output if no lock exists).
         let output = self
             .ssh_command()
             .arg(format!("cat '{lock}/pid' 2>/dev/null"))
             .output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        let mut lines = content.lines();
-        let lock_hostname = lines.next().unwrap_or("").trim().to_string();
-        let lock_pid = lines.next().and_then(|s| s.trim().parse::<u32>().ok());
+        let pid = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u32>()
+            .ok();
 
-        if !lock_hostname.is_empty() {
-            let my_hostname = local_hostname();
-            let is_stale = if lock_hostname == my_hostname {
-                // Same machine — we can check the PID directly.
-                lock_pid.map(|p| !is_process_alive(p)).unwrap_or(true)
-            } else {
-                // Different machine — conservatively treat as live.
-                false
-            };
-            if !is_stale {
+        if let Some(pid) = pid {
+            if is_process_alive(pid) {
                 return Err(StorageBackendError::LockContended(format!(
-                    "{}:{} (held by {})",
-                    self.host, lock, lock_hostname
+                    "{}:{}",
+                    self.host, lock
                 )));
             }
         }
 
-        // No lock or stale lock — (re)create it with local hostname + PID.
-        let my_hostname = local_hostname();
+        // No lock or stale lock — (re)create it with the local PID.
         let local_pid = std::process::id();
         let output = self
             .ssh_command()
             .arg(format!(
-                "rm -rf '{lock}' && mkdir '{lock}' \
-                 && printf '%s\\n%s\\n' '{my_hostname}' '{local_pid}' > '{lock}/pid'"
+                "rm -rf '{lock}' && mkdir '{lock}' && echo {local_pid} > '{lock}/pid'"
             ))
             .output()?;
         if !output.status.success() {
@@ -404,25 +387,6 @@ fn is_process_alive(pid: u32) -> bool {
     }
 }
 
-/// Returns the hostname of the local machine, normalised to safe characters.
-///
-/// Used to tag the lock file so that, when two machines back up to the same
-/// destination, each machine can tell whether an existing lock belongs to itself
-/// (and can therefore check PID liveness) or to a different host (in which case
-/// it must treat the lock as live and refuse to proceed).
-///
-/// Only alphanumeric characters, hyphens, and dots are kept.  This ensures the
-/// value is safe to embed inside single-quoted shell strings (even though valid
-/// hostnames cannot contain single quotes per RFC 952, we strip them anyway).
-fn local_hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname")
-        .or_else(|_| std::fs::read_to_string("/etc/hostname"))
-        .unwrap_or_default()
-        .trim()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '.')
-        .collect()
-}
 
 impl StorageBackend for LocalBackend {
     /// Lists snapshots by reading the local destination directory.
@@ -485,34 +449,24 @@ impl StorageBackend for LocalBackend {
         Ok(latest.exists() || latest.is_symlink())
     }
 
-    /// Creates `<dest>/backup.lock/` and writes `<hostname>\n<pid>` inside it.
+    /// Creates `<dest>/backup.lock/` and writes the current PID inside it.
     ///
-    /// Stale-lock detection uses the same hostname-aware logic as the remote
-    /// backend: only auto-clear if the recorded hostname matches this machine
-    /// **and** the PID is no longer alive.  Locks from other hosts must be
-    /// removed manually (consistent with the remote backend's behaviour).
+    /// If the directory already exists, the PID file is read and checked with
+    /// [`is_process_alive`]. A stale lock (process no longer alive) is removed
+    /// automatically before the new lock is created. A live lock returns
+    /// [`StorageBackendError::LockContended`].
     fn acquire_lock(&self) -> Result<(), StorageBackendError> {
         let lock = self.path.join(LOCK_NAME);
 
         if lock.exists() {
-            let content = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
-            let mut lines = content.lines();
-            let lock_hostname = lines.next().unwrap_or("").trim().to_string();
-            let lock_pid = lines.next().and_then(|s| s.trim().parse::<u32>().ok());
+            let pid_str = std::fs::read_to_string(lock.join("pid")).unwrap_or_default();
+            let pid = pid_str.trim().parse::<u32>().ok();
+            let still_alive = pid.map(is_process_alive).unwrap_or(false);
 
-            let my_hostname = local_hostname();
-            let is_stale = if lock_hostname == my_hostname {
-                lock_pid.map(|p| !is_process_alive(p)).unwrap_or(true)
-            } else {
-                false // different host — treat as live
-            };
-
-            if !is_stale {
-                return Err(StorageBackendError::LockContended(format!(
-                    "{} (held by {})",
-                    lock.display(),
-                    if lock_hostname.is_empty() { "unknown" } else { &lock_hostname }
-                )));
+            if still_alive {
+                return Err(StorageBackendError::LockContended(
+                    lock.display().to_string(),
+                ));
             }
             // Stale lock — the process is gone; remove it and proceed.
             std::fs::remove_dir_all(&lock)?;
@@ -525,12 +479,7 @@ impl StorageBackend for LocalBackend {
                 StorageBackendError::Io(e)
             }
         })?;
-        let my_hostname = local_hostname();
-        let local_pid = std::process::id();
-        std::fs::write(
-            lock.join("pid"),
-            format!("{my_hostname}\n{local_pid}\n"),
-        )?;
+        std::fs::write(lock.join("pid"), std::process::id().to_string())?;
         Ok(())
     }
 
