@@ -406,6 +406,11 @@ fn is_process_alive(pid: u32) -> bool {
 
 /// Returns the hostname of the local machine, normalised to safe characters.
 ///
+/// Used to tag the lock file so that, when two machines back up to the same
+/// destination, each machine can tell whether an existing lock belongs to itself
+/// (and can therefore check PID liveness) or to a different host (in which case
+/// it must treat the lock as live and refuse to proceed).
+///
 /// Only alphanumeric characters, hyphens, and dots are kept.  This ensures the
 /// value is safe to embed inside single-quoted shell strings (even though valid
 /// hostnames cannot contain single quotes per RFC 952, we strip them anyway).
