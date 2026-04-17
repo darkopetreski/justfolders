@@ -12,6 +12,16 @@ No agents.
 No proprietary formats.
 Just folders.
 
+## Requirements
+
+| Dependency | Where required | Notes |
+|---|---|---|
+| `rsync` | local machine (the machine running justfolders) | Used for all transfers. Any modern version works. |
+| `ssh` | local machine | Required for remote sources or destinations. |
+| `sha256sum` | **remote server** (only when destination is remote) | Used to generate and verify snapshot manifests. Part of GNU coreutils — present on all standard Linux distributions. Not needed for local-only backups. |
+
+All three are standard tools available by default on any Linux system. macOS ships `ssh` and `rsync` but not `sha256sum` — use `brew install coreutils` if running justfolders on macOS against a remote destination.
+
 ## Usage
 
 ### 1. Generate a config file
