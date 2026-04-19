@@ -168,6 +168,26 @@ pub struct RetentionPolicy {
 }
 
 impl RetentionPolicy {
+    /// Returns `true` when no retention rules are configured (all fields are
+    /// `None` or set to `0`, which is treated as disabled).
+    pub fn is_empty(&self) -> bool {
+        let count_rules = [
+            self.keep_hourly,
+            self.keep_daily,
+            self.keep_weekly,
+            self.keep_monthly,
+            self.keep_yearly,
+        ];
+        let within_rules = [
+            self.keep_within_hourly,
+            self.keep_within_daily,
+            self.keep_within_weekly,
+            self.keep_within_monthly,
+            self.keep_within_yearly,
+        ];
+        count_rules.iter().chain(within_rules.iter()).all(|v| v.map_or(true, |n| n == 0))
+    }
+
     fn load(ini: &Ini) -> Result<Self, ConfigError> {
         let get_uint = |key: &str| -> Result<Option<u32>, ConfigError> {
             ini.getuint("policy", key)
