@@ -15,13 +15,13 @@ use tempfile::TempDir;
 
 // ── Configuration — edit these ────────────────────────────────────────────
 
-const START: &str = "2026-04-15";
-const END:   &str = "2028-05-07";
+const START: &str = "2024-04-15";
+const END:   &str = "2026-04-19";
 
 const KEEP_HOURLY:  Option<u32> = None;
-const KEEP_DAILY:   Option<u32> = Some(2);
-const KEEP_WEEKLY:  Option<u32> = Some(2);
-const KEEP_MONTHLY: Option<u32> = Some(2);
+const KEEP_DAILY:   Option<u32> = Some(1);
+const KEEP_WEEKLY:  Option<u32> = Some(4);
+const KEEP_MONTHLY: Option<u32> = Some(12);
 const KEEP_YEARLY:  Option<u32> = Some(2);
 
 // ─────────────────────────────────────────────────────────────────────────
