@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDateTime};
 use std::collections::HashSet;
 
 use crate::core::config::RetentionPolicy;
@@ -116,22 +116,28 @@ fn run_policy(
     // A value of 0 is treated as "disabled" (matches the config file comment
     // "0 = disabled").
     if let Some(n) = policy.keep_hourly.filter(|&n| n > 0) {
-        // Hourly snapshots are only meaningful within a single day.
-        // Snapshots older than the most recent day bypass the hourly rule
-        // entirely and remain in the pool for the daily/weekly/... rules.
+        // "Hourly" means the N most recent snapshots from the same calendar
+        // day as the newest snapshot. No per-clock-hour deduplication is
+        // applied: two backups taken within the same hour both count.
+        // Snapshots from any earlier day bypass this rule entirely and fall
+        // through to the daily/weekly/... rules.
         let today = pool.first().map(|(_, dt)| (dt.year(), dt.month(), dt.day()));
         if let Some(today) = today {
             let (todays, older): (Vec<_>, Vec<_>) = pool
                 .into_iter()
                 .partition(|(_, dt)| (dt.year(), dt.month(), dt.day()) == today);
 
-            let skip: HashSet<_> =
-                covered(&kept, |dt| (dt.year(), dt.month(), dt.day(), dt.hour()));
-            let mut leftover = apply_rule(
-                todays, n,
-                |dt| (dt.year(), dt.month(), dt.day(), dt.hour()),
-                &skip, SnapshotCategory::Hourly, &mut kept,
-            );
+            // `todays` is newest-first; claim the first N, pass the rest on.
+            let mut leftover = Vec::new();
+            let mut claimed = 0u32;
+            for (name, dt) in todays {
+                if claimed < n {
+                    kept.push((name, SnapshotCategory::Hourly));
+                    claimed += 1;
+                } else {
+                    leftover.push((name, dt));
+                }
+            }
             leftover.extend(older);
             leftover.sort_by(|a, b| b.1.cmp(&a.1));
             pool = leftover;
