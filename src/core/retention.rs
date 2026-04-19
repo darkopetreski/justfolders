@@ -38,12 +38,16 @@ fn parse_snapshot_date(name: &str) -> Option<NaiveDateTime> {
 /// Walk `pool` (newest-first), claim up to `max_buckets` distinct buckets,
 /// push the claimed entries into `kept`, and return what remains unclaimed.
 ///
-/// Only the newest snapshot in each bucket is claimed; older snapshots in the
-/// same bucket stay in the pool and may be picked up by a coarser rule.
+/// Buckets present in `skip` are already covered by a finer-grained rule;
+/// snapshots that fall into those buckets are left in the pool so that a
+/// coarser rule can evaluate them (or they are eventually pruned).
+///
+/// Among non-skipped buckets, only the newest snapshot per bucket is claimed.
 fn apply_rule<K, F>(
     pool: Vec<(String, NaiveDateTime)>,
     max_buckets: u32,
     bucket_of: F,
+    skip: &HashSet<K>,
     category: SnapshotCategory,
     kept: &mut Vec<(String, SnapshotCategory)>,
 ) -> Vec<(String, NaiveDateTime)>
@@ -56,7 +60,10 @@ where
 
     for (name, dt) in pool {
         let bucket = bucket_of(&dt);
-        if (seen.len() as u32) < max_buckets && !seen.contains(&bucket) {
+        if skip.contains(&bucket) {
+            // Already represented by a finer rule — pass to coarser rules.
+            remaining.push((name, dt));
+        } else if (seen.len() as u32) < max_buckets && !seen.contains(&bucket) {
             seen.insert(bucket);
             kept.push((name, category.clone()));
         } else {
@@ -67,82 +74,92 @@ where
     remaining
 }
 
+/// Collect the set of K-buckets occupied by every snapshot currently in `kept`.
+///
+/// Used to tell the next (coarser) rule which of its own buckets are already
+/// represented, so it can skip them rather than double-counting.
+fn covered<K, F>(kept: &[(String, SnapshotCategory)], bucket_of: F) -> HashSet<K>
+where
+    K: Eq + std::hash::Hash,
+    F: Fn(&NaiveDateTime) -> K,
+{
+    kept.iter()
+        .filter_map(|(name, _)| parse_snapshot_date(name))
+        .map(|dt| bucket_of(&dt))
+        .collect()
+}
+
 // ── Main algorithm ────────────────────────────────────────────────────────
 
 /// Applies the retention policy using cascading non-overlapping rules.
 ///
 /// Rules are applied finest-first (hourly → daily → weekly → monthly → yearly).
-/// Each rule claims from the pool of snapshots not yet claimed by a finer rule,
-/// keeping the newest snapshot per calendar bucket up to the configured count.
+/// Before each rule runs, the buckets already represented by all finer rules
+/// are computed and passed as a skip-set, so a coarser rule never claims a
+/// bucket that a finer rule already covers.
 ///
 /// Returns `(to_delete, categorized_keeps)`.
 fn run_policy(
     policy: &RetentionPolicy,
     snapshots: &[String],
 ) -> (Vec<String>, Vec<(String, SnapshotCategory)>) {
-    // Parse snapshot names; silently skip any that cannot be parsed.
     let mut pool: Vec<(String, NaiveDateTime)> = snapshots
         .iter()
         .filter_map(|s| parse_snapshot_date(s).map(|dt| (s.clone(), dt)))
         .collect();
 
-    // Newest-first: each rule's representative is the newest in its bucket.
+    // Newest-first so each rule's representative is the newest in its bucket.
     pool.sort_by(|a, b| b.1.cmp(&a.1));
 
     let mut kept: Vec<(String, SnapshotCategory)> = Vec::new();
 
-    // A value of 0 is treated as "disabled" (equivalent to None), matching the
-    // config file comment "0 = disabled".
+    // A value of 0 is treated as "disabled" (matches the config file comment
+    // "0 = disabled").
     if let Some(n) = policy.keep_hourly.filter(|&n| n > 0) {
+        let skip: HashSet<_> = covered(&kept, |dt| (dt.year(), dt.month(), dt.day(), dt.hour()));
         pool = apply_rule(
-            pool,
-            n,
+            pool, n,
             |dt| (dt.year(), dt.month(), dt.day(), dt.hour()),
-            SnapshotCategory::Hourly,
-            &mut kept,
+            &skip, SnapshotCategory::Hourly, &mut kept,
         );
     }
 
     if let Some(n) = policy.keep_daily.filter(|&n| n > 0) {
+        let skip: HashSet<_> = covered(&kept, |dt| (dt.year(), dt.month(), dt.day()));
         pool = apply_rule(
-            pool,
-            n,
+            pool, n,
             |dt| (dt.year(), dt.month(), dt.day()),
-            SnapshotCategory::Daily,
-            &mut kept,
+            &skip, SnapshotCategory::Daily, &mut kept,
         );
     }
 
     if let Some(n) = policy.keep_weekly.filter(|&n| n > 0) {
+        let skip: HashSet<_> = covered(&kept, |dt| {
+            let w = dt.iso_week();
+            (w.year(), w.week())
+        });
         pool = apply_rule(
-            pool,
-            n,
-            |dt| {
-                let w = dt.iso_week();
-                (w.year(), w.week())
-            },
-            SnapshotCategory::Weekly,
-            &mut kept,
+            pool, n,
+            |dt| { let w = dt.iso_week(); (w.year(), w.week()) },
+            &skip, SnapshotCategory::Weekly, &mut kept,
         );
     }
 
     if let Some(n) = policy.keep_monthly.filter(|&n| n > 0) {
+        let skip: HashSet<_> = covered(&kept, |dt| (dt.year(), dt.month()));
         pool = apply_rule(
-            pool,
-            n,
+            pool, n,
             |dt| (dt.year(), dt.month()),
-            SnapshotCategory::Monthly,
-            &mut kept,
+            &skip, SnapshotCategory::Monthly, &mut kept,
         );
     }
 
     if let Some(n) = policy.keep_yearly.filter(|&n| n > 0) {
+        let skip: HashSet<_> = covered(&kept, |dt| dt.year());
         pool = apply_rule(
-            pool,
-            n,
+            pool, n,
             |dt| dt.year(),
-            SnapshotCategory::Yearly,
-            &mut kept,
+            &skip, SnapshotCategory::Yearly, &mut kept,
         );
     }
 

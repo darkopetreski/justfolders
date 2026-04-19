@@ -192,12 +192,15 @@ fn irregular_schedule_from_discussion() {
     assert_eq!(final_snapshots.len(), 4, "expected 4 snapshots total (no overlap)");
 }
 
-/// Simulate a continuous daily backup for ~7 weeks.
+/// Simulate a continuous daily backup spanning ~4.5 months.
 /// Policy: keep_daily=7, keep_weekly=4, keep_monthly=3
 ///
-/// Useful for seeing how the three tiers interact over a longer horizon.
+/// Start date is chosen far enough back that the monthly tier has data to
+/// claim after daily and weekly have taken their buckets (daily takes the
+/// current week, weekly takes the 4 preceding weeks; monthly then finds
+/// December, January, and February available).
 #[test]
-fn daily_for_7_weeks_three_tier_policy() {
+fn daily_for_several_months_three_tier_policy() {
     let dest = TempDir::new().unwrap();
     let policy = RetentionPolicy {
         keep_daily: Some(7),
@@ -206,38 +209,29 @@ fn daily_for_7_weeks_three_tier_policy() {
         ..Default::default()
     };
 
-    let start = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-    let end = NaiveDate::from_ymd_opt(2026, 4, 19).unwrap();
+    // 2025-12-01 → 2026-04-19: gives Dec 2025, Jan 2026, Feb 2026 for monthly
+    // after daily (W16) and weekly (W15, W14, W13, W12) consume Apr + Mar.
+    let start = NaiveDate::from_ymd_opt(2025, 12, 1).unwrap();
+    let end   = NaiveDate::from_ymd_opt(2026, 4, 19).unwrap();
 
     simulate_daily(&dest, start, end, &policy);
 
     let final_snapshots = list_snapshots(&dest);
     println!();
     print_grouped(
-        &format!(
-            "Daily {start} → {end}  |  keep_daily=7, keep_weekly=4, keep_monthly=3"
-        ),
+        &format!("Daily {start} → {end}  |  keep_daily=7, keep_weekly=4, keep_monthly=3"),
         &policy,
         &final_snapshots,
     );
 
     let categorized = classify_snapshots(&policy, &final_snapshots);
-    let daily = categorized
-        .iter()
-        .filter(|(_, c)| *c == SnapshotCategory::Daily)
-        .count();
-    let weekly = categorized
-        .iter()
-        .filter(|(_, c)| *c == SnapshotCategory::Weekly)
-        .count();
-    let monthly = categorized
-        .iter()
-        .filter(|(_, c)| *c == SnapshotCategory::Monthly)
-        .count();
+    let daily   = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Daily).count();
+    let weekly  = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Weekly).count();
+    let monthly = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Monthly).count();
 
-    assert_eq!(daily, 7, "expected 7 daily snapshots");
-    assert_eq!(weekly, 4, "expected 4 weekly snapshots");
-    assert!(monthly >= 1, "expected at least 1 monthly snapshot");
+    assert_eq!(daily,   7, "expected 7 daily snapshots");
+    assert_eq!(weekly,  4, "expected 4 weekly snapshots");
+    assert_eq!(monthly, 3, "expected 3 monthly snapshots");
     assert_eq!(
         final_snapshots.len(),
         daily + weekly + monthly,
@@ -245,10 +239,15 @@ fn daily_for_7_weeks_three_tier_policy() {
     );
 }
 
-/// Simulate a full year of daily backups.
+/// Simulate 3.5 years of daily backups.
 /// Policy: keep_daily=7, keep_weekly=4, keep_monthly=6, keep_yearly=2
+///
+/// Start date is chosen far enough back that the yearly tier has data to
+/// claim after daily, weekly, and monthly have consumed their buckets.
+/// Monthly covers ~6 months (touching 2025 and 2026); yearly then finds
+/// 2024 and 2023 still available.
 #[test]
-fn full_year_four_tier_policy() {
+fn multi_year_four_tier_policy() {
     let dest = TempDir::new().unwrap();
     let policy = RetentionPolicy {
         keep_daily: Some(7),
@@ -258,29 +257,29 @@ fn full_year_four_tier_policy() {
         ..Default::default()
     };
 
-    let start = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
-    let end = NaiveDate::from_ymd_opt(2026, 4, 19).unwrap();
+    let start = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
+    let end   = NaiveDate::from_ymd_opt(2026, 4, 19).unwrap();
 
     simulate_daily(&dest, start, end, &policy);
 
     let final_snapshots = list_snapshots(&dest);
     println!();
     print_grouped(
-        "Daily 2025-01-01 → 2026-04-19  |  keep_daily=7, keep_weekly=4, keep_monthly=6, keep_yearly=2",
+        "Daily 2023-01-01 → 2026-04-19  |  keep_daily=7, keep_weekly=4, keep_monthly=6, keep_yearly=2",
         &policy,
         &final_snapshots,
     );
 
     let categorized = classify_snapshots(&policy, &final_snapshots);
-    let daily = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Daily).count();
-    let weekly = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Weekly).count();
+    let daily   = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Daily).count();
+    let weekly  = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Weekly).count();
     let monthly = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Monthly).count();
-    let yearly = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Yearly).count();
+    let yearly  = categorized.iter().filter(|(_, c)| *c == SnapshotCategory::Yearly).count();
 
-    assert_eq!(daily, 7);
-    assert_eq!(weekly, 4);
+    assert_eq!(daily,   7);
+    assert_eq!(weekly,  4);
     assert_eq!(monthly, 6);
-    assert!(yearly >= 1);
+    assert_eq!(yearly,  2);
     assert_eq!(
         final_snapshots.len(),
         daily + weekly + monthly + yearly,
