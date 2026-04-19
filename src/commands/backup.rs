@@ -2,7 +2,7 @@ use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::notify;
 use crate::core::parser::BackupArgs;
-use crate::core::retention::apply_policy;
+use crate::core::retention::{apply_policy, print_snapshot_groups};
 use crate::core::rsync::{Rsync, RsyncError};
 use crate::core::storage_backend::{StorageBackend, StorageBackendError};
 use thiserror::Error;
@@ -102,6 +102,10 @@ fn do_backup(config: &Config) -> Result<(), BackupError> {
         config.src.original,
         layout.timestamp_arg()
     );
+
+    let remaining = layout.backend().list_snapshots()?;
+    println!();
+    print_snapshot_groups(&config.policy, &remaining);
 
     Ok(())
 }

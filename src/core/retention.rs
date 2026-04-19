@@ -195,3 +195,61 @@ pub fn classify_snapshots(
     let (_, kept) = run_policy(policy, snapshots);
     kept
 }
+
+/// Print `snapshots` grouped by retention category.
+///
+/// When no policy rules are active the list is printed flat, oldest-first.
+/// When a policy is active, snapshots are grouped under Hourly / Daily /
+/// Weekly / Monthly / Yearly headings, newest-first within each group.
+/// Any snapshot not claimed by any rule is shown under "Other" at the bottom.
+pub fn print_snapshot_groups(policy: &RetentionPolicy, snapshots: &[String]) {
+    if policy.is_empty() {
+        snapshots.iter().for_each(|s| println!("{s}"));
+        return;
+    }
+
+    let categorized = classify_snapshots(policy, snapshots);
+
+    let categorized_names: HashSet<&str> =
+        categorized.iter().map(|(n, _)| n.as_str()).collect();
+
+    let other: Vec<&str> = snapshots
+        .iter()
+        .rev()
+        .filter(|s| !categorized_names.contains(s.as_str()))
+        .map(String::as_str)
+        .collect();
+
+    let sep = "─".repeat(22);
+    let order = [
+        SnapshotCategory::Hourly,
+        SnapshotCategory::Daily,
+        SnapshotCategory::Weekly,
+        SnapshotCategory::Monthly,
+        SnapshotCategory::Yearly,
+    ];
+
+    let mut first = true;
+    for category in &order {
+        let entries: Vec<&str> = categorized
+            .iter()
+            .filter(|(_, cat)| cat == category)
+            .map(|(n, _)| n.as_str())
+            .collect();
+        if entries.is_empty() {
+            continue;
+        }
+        if !first { println!(); }
+        println!("{}", category.label());
+        println!("{sep}");
+        for s in entries { println!("{s}"); }
+        first = false;
+    }
+
+    if !other.is_empty() {
+        if !first { println!(); }
+        println!("Other");
+        println!("{sep}");
+        for s in other { println!("{s}"); }
+    }
+}

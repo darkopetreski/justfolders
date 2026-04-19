@@ -42,7 +42,6 @@ pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     print_grouped(&config.policy, &snapshots);
     Ok(())
 }
-
 fn print_grouped(policy: &crate::core::config::RetentionPolicy, snapshots: &[String]) {
     let categorized = classify_snapshots(policy, snapshots);
 
@@ -100,3 +99,4 @@ fn print_grouped(policy: &crate::core::config::RetentionPolicy, snapshots: &[Str
         }
     }
 }
+
