@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDateTime};
+use chrono::{Datelike, Duration, Local, NaiveDateTime};
 use std::collections::HashSet;
 
 use crate::core::config::RetentionPolicy;
@@ -8,6 +8,9 @@ use crate::core::config::RetentionPolicy;
 /// The retention category assigned to a kept snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SnapshotCategory {
+    /// Kept because it falls within the `keep_within_days` window and was not
+    /// claimed by any count-based rule.
+    WithinDays,
     Hourly,
     Daily,
     Weekly,
@@ -18,6 +21,7 @@ pub enum SnapshotCategory {
 impl SnapshotCategory {
     pub fn label(&self) -> &'static str {
         match self {
+            Self::WithinDays => "Recent",
             Self::Hourly => "Hourly",
             Self::Daily => "Daily",
             Self::Weekly => "Weekly",
@@ -183,6 +187,23 @@ fn run_policy(
         );
     }
 
+    // Safety-net: keep every snapshot within the last N calendar days that was
+    // not already claimed by a count-based rule.  Uses the real current date so
+    // the window is always anchored to "now", not to the newest snapshot.
+    if let Some(n) = policy.keep_within_days.filter(|&n| n > 0) {
+        let today = Local::now().date_naive();
+        let cutoff = today - Duration::days(n as i64);
+        let mut new_pool = Vec::new();
+        for (name, dt) in pool {
+            if dt.date() >= cutoff {
+                kept.push((name, SnapshotCategory::WithinDays));
+            } else {
+                new_pool.push((name, dt));
+            }
+        }
+        pool = new_pool;
+    }
+
     let to_delete = pool.into_iter().map(|(s, _)| s).collect();
     (to_delete, kept)
 }
@@ -242,6 +263,7 @@ pub fn print_snapshot_groups(policy: &RetentionPolicy, snapshots: &[String]) {
 
     let sep = "─".repeat(22);
     let order = [
+        SnapshotCategory::WithinDays,
         SnapshotCategory::Hourly,
         SnapshotCategory::Daily,
         SnapshotCategory::Weekly,
