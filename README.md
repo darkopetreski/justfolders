@@ -24,10 +24,7 @@ All three are standard tools available by default on any Linux system. macOS shi
 
 ## Command-line reference
 
-JustFolders is invoked as `justfolders <COMMAND> [OPTIONS]`. The program is built with
-[clap](https://github.com/clap-rs/clap): if you run it without a subcommand, or a
-subcommand without its required arguments, clap prints a short usage summary and exits
-with a non-zero status code. Use `-h` / `--help` on any level for more detail:
+JustFolders is invoked as `justfolders <COMMAND> [OPTIONS]`. Use `-h` / `--help` on any level for more detail:
 
 ```bash
 justfolders --help              # list commands and global options
