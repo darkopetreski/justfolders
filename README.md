@@ -96,6 +96,41 @@ Options:
 | `--config <FILE>` | **Required.** Same config as `backup` — only `src` / `dest` / `policy` matter for listing; the command uses the destination from `[default]`. |
 | `-h`, `--help` | Show help for this subcommand. |
 
+**Example output** (grouped mode, when `[policy]` is set). A `Policy:` line listing active
+`keep_*` values is printed first, then each category. Names use `YYYY-MM-DD-HHMMSS`; within
+each block they are **newest first**. Optional sections such as **Recent** (from
+`keep_within_days`) or **Hourly** appear above **Daily** when those rules are enabled.
+The program does not print a `Total:` line; the last line below is for readers only.
+
+```text
+Policy: daily=5  weekly=2  monthly=2  yearly=2
+
+Daily
+──────────────────────
+2026-04-19-231542
+2026-04-18-014403
+2026-04-17-093015
+2026-04-16-204811
+2026-04-15-062247
+
+Weekly
+──────────────────────
+2026-04-12-060515
+2026-04-05-203911
+
+Monthly
+──────────────────────
+2026-03-29-112847
+2026-02-22-095302
+
+Yearly
+──────────────────────
+2025-12-28-044128
+2024-12-29-173656
+
+Total: 11 snapshots
+```
+
 ### `verify` — checksum a snapshot against its manifest
 
 Re-reads every file listed in `SHA256SUMS` inside the snapshot and compares hashes.

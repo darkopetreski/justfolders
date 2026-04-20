@@ -19,10 +19,10 @@ const START: &str = "2024-04-15";
 const END:   &str = "2026-04-19";
 
 const KEEP_HOURLY:  Option<u32> = None;
-const KEEP_DAILY:   Option<u32> = Some(30);
-const KEEP_WEEKLY:  Option<u32> = Some(1);
-const KEEP_MONTHLY: Option<u32> = Some(1);
-const KEEP_YEARLY:  Option<u32> = Some(1);
+const KEEP_DAILY:   Option<u32> = Some(5);
+const KEEP_WEEKLY:  Option<u32> = Some(2);
+const KEEP_MONTHLY: Option<u32> = Some(2);
+const KEEP_YEARLY:  Option<u32> = Some(2);
 
 // ─────────────────────────────────────────────────────────────────────────
 
