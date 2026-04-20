@@ -22,6 +22,138 @@ Just folders.
 
 All three are standard tools available by default on any Linux system. macOS ships `ssh` and `rsync` but not `sha256sum` — use `brew install coreutils` if running justfolders on macOS against a remote destination.
 
+## Command-line reference
+
+JustFolders is invoked as `justfolders <COMMAND> [OPTIONS]`. The program is built with
+[clap](https://github.com/clap-rs/clap): if you run it without a subcommand, or a
+subcommand without its required arguments, clap prints a short usage summary and exits
+with a non-zero status code. Use `-h` / `--help` on any level for more detail:
+
+```bash
+justfolders --help              # list commands and global options
+justfolders backup --help       # backup-specific options
+justfolders init --help         # init-specific options
+```
+
+### Top level
+
+When you run `justfolders` with no arguments, you see something like:
+
+```text
+JustFolders is a backup tool for creating folder snapshots without duplicating unchanged files.
+
+Usage: justfolders <COMMAND>
+
+Commands:
+  backup     Run a backup job using the config file
+  snapshots  List all available snapshots at the destination
+  init       Generate a config file from provided arguments
+  verify     Verify the integrity of a snapshot …
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help (see more with '--help')
+  -V, --version  Print version
+```
+
+| Option | Meaning |
+|--------|---------|
+| `-h`, `--help` | Show the help text. With some clap versions, `--help` may show the long description from the binary; `-h` is often the compact view. |
+| `-V`, `--version` | Print the JustFolders version and exit. |
+
+### `backup` — run a backup
+
+Reads `[default]` and `[policy]` from the config file, acquires the destination lock,
+runs rsync into `tmp/`, promotes the snapshot, generates `SHA256SUMS`, applies the
+retention policy, and prints a grouped summary of remaining snapshots.
+
+```text
+Usage: justfolders backup --config <FILE>
+
+Options:
+      --config <FILE>  Path to the config file
+  -h, --help           Print help
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <FILE>` | **Required.** Path to the `.ini` config file (see `init`). Relative paths are resolved from the current working directory. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+### `snapshots` — list snapshots
+
+Lists timestamped snapshot directories at the destination. If a `[policy]` section
+is present in the config, output is grouped (Recent / Hourly / Daily / …) with a
+one-line policy summary; otherwise names are printed flat, oldest first.
+
+```text
+Usage: justfolders snapshots --config <FILE>
+
+Options:
+      --config <FILE>  Path to the config file
+  -h, --help           Print help
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <FILE>` | **Required.** Same config as `backup` — only `src` / `dest` / `policy` matter for listing; the command uses the destination from `[default]`. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+### `verify` — checksum a snapshot against its manifest
+
+Re-reads every file listed in `SHA256SUMS` inside the snapshot and compares hashes.
+Exits `0` if clean, `1` if any mismatch or missing file — suitable for cron and
+monitoring.
+
+```text
+Usage: justfolders verify [OPTIONS] --config <FILE>
+
+Options:
+      --config <FILE>    Path to the config file
+      --snapshot <NAME>  Snapshot to verify [default: latest]
+  -h, --help             Print help
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <FILE>` | **Required.** Config that points at the same destination as your backups. |
+| `--snapshot <NAME>` | Which snapshot to check. Use the folder name `YYYY-MM-DD-HHMMSS`, or `latest` (default) to pick the lexicographically last timestamp in the listing. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+### `init` — generate a new config file
+
+Creates a starter `.ini` from command-line arguments. **Required:** `--config`,
+`--src`, and `--dest`. Everything else is optional and is written into the file
+either as active lines or as commented placeholders (see generated file).
+
+```text
+Usage: justfolders init [OPTIONS] --config <FILE> --src <SRC> --dest <DEST>
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <FILE>` | **Required.** Where to write the new config. If the path has no `.ini` extension, one is added automatically. Fails if the file already exists (delete or edit it by hand). |
+| `--src <SRC>` | **Required.** Source to back up: local path, `user@host:/path`, or an SSH `Host` alias from `~/.ssh/config` (e.g. `myserver:/data`). A trailing `/` is normalized internally so rsync copies directory *contents*. |
+| `--dest <DEST>` | **Required.** Backup root: local path or remote in the same forms as `--src`. Snapshot folders and `latest` are created inside this directory. |
+| `-p`, `--port <PORT>` | SSH port for rsync’s `-e ssh -p …` when either side is remote. Written as `port = …` in `[default]`; defaults to 22 if omitted. |
+| `-i`, `--id-rsa <FILE>` | Path to the private key for SSH. Written as `id_rsa = …`. Optional if your SSH config already sets `IdentityFile`. |
+| `--rsync-flags <FLAGS>` | Full rsync argument string. Default is a safe, preserve-metadata set including `--delete` (see `--help` output for the exact default). Pass a quoted string if you need spaces. |
+| `--disable-logs` | Sets `disable_logs = true` so rsync does not get `--log-file`. |
+| `--log-dir <DIR>` | If set, rsync logs go here; written as `log_dir = …`. If omitted, the generated file uses a commented example and runtime default is `<dest>/.logs` when logging is enabled. |
+| `--exclude-from <FILE>` | Path to an rsync exclude patterns file; written as `exclude_from = …`. |
+| `--bwlimit <KB/s>` | Rsync bandwidth cap in kilobytes per second (e.g. `1000` ≈ 1 MiB/s). |
+| `--keep-hourly <N>` | Seed `[policy] keep_hourly` in the generated file. |
+| `--keep-daily <N>` | Seed `[policy] keep_daily`. |
+| `--keep-weekly <N>` | Seed `[policy] keep_weekly`. |
+| `--keep-monthly <N>` | Seed `[policy] keep_monthly`. |
+| `--keep-yearly <N>` | Seed `[policy] keep_yearly`. |
+| `--keep-within-days <N>` | Seed `[policy] keep_within_days` — keep **every** snapshot whose calendar date falls within the last *N* days from “today” when the policy runs (in addition to the `keep_*` counts). |
+| `--dry-run` | Print the generated INI to stdout instead of writing the file. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+Retention values from `init` only set the initial config; you can always edit
+`[policy]` later. A value of `0` in the file means “disabled” for that rule.
+
 ## Usage
 
 ### 1. Generate a config file

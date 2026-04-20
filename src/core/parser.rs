@@ -149,7 +149,7 @@ pub struct InitArgs {
     #[arg(long = "keep-yearly", value_name = "N")]
     pub keep_yearly: Option<u32>,
 
-    /// Keep all snapshots within the last N hours.
+    /// Keep all snapshots from the last N calendar days (see `[policy]` in the generated config).
     #[arg(long = "keep-within-days", value_name = "N")]
     pub keep_within_days: Option<u32>,
     
