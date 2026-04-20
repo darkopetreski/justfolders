@@ -104,7 +104,14 @@ fn do_backup(config: &Config) -> Result<(), BackupError> {
     println!("done");
 
     let snapshots = layout.backend().list_snapshots()?;
-    let to_delete = apply_policy(&config.policy, &snapshots);
+    let mut to_delete = apply_policy(&config.policy, &snapshots);
+
+    // Belt-and-suspenders: the retention algorithm guarantees the just-created
+    // snapshot is always claimed by some rule and never appears in to_delete.
+    // This explicit guard makes that invariant immune to any future regression —
+    // the snapshot we just created must never be deleted in the same run.
+    to_delete.retain(|name| name != layout.timestamp());
+
     for name in &to_delete {
         layout.backend().delete_snapshot(name)?;
     }
