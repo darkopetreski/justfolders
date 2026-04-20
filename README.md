@@ -33,7 +33,8 @@ justfolders init --config backup.ini \
 ```
 
 Optional flags: `--port`, `--id-rsa`, `--log-dir`, `--exclude-from`, `--disable-logs`,
-`--keep-daily N`, `--keep-weekly N`, `--keep-monthly N`, `--keep-yearly N`, and more.
+`--keep-within-days N`, `--keep-hourly N`, `--keep-daily N`, `--keep-weekly N`,
+`--keep-monthly N`, `--keep-yearly N`, and more.
 Use `--dry-run` to print the generated config to stdout without saving it.
 
 ### 2. Run a backup
@@ -166,6 +167,79 @@ rsync -av my-backup-server:/backups/latest/ /home/user/
 Because snapshots are plain folders, you can also browse them in any file manager,
 open files directly without any extraction step, or restore on a machine that has never
 had JustFolders installed. No special software is needed — ever.
+
+### 7. Pinning a snapshot forever
+
+The retention engine only considers directories whose name matches the
+`YYYY-MM-DD-HHMMSS` format. **Renaming a snapshot to anything else makes it
+completely invisible to the retention algorithm** — it will never be touched,
+regardless of how aggressive the policy is.
+
+This is the simplest way to preserve a specific point-in-time permanently:
+a release, a state before a migration, a known-good baseline, etc.
+
+```bash
+# Local — rename in place
+mv /backups/2025-04-15-120000 /backups/before-migration
+
+# Remote — rename over SSH
+ssh my-backup-server "mv /backups/2025-04-15-120000 /backups/before-migration"
+```
+
+The renamed folder sits alongside the regular timestamped snapshots and is left
+untouched by every future backup run. Restore from it the same way as any other
+snapshot — it is still just a plain folder.
+
+To unpin it later (put it back under retention control), rename it back to the
+original timestamp:
+
+```bash
+mv /backups/before-migration /backups/2025-04-15-120000
+```
+
+### 8. Creating a self-contained archive
+
+A snapshot is a directory of hard-linked files — the files are space-efficient on
+disk but share underlying data with other snapshots. Running `tar` on a snapshot
+breaks those hard links and writes each file's data independently into the archive.
+The result is a **fully self-contained, independent copy** of that exact point in
+time — no dependency on any other snapshot, safe to move to cold storage, an
+external drive, or a cloud bucket.
+
+```bash
+# Local — create a compressed archive in an archives folder
+mkdir -p /backups/archives
+tar -czf /backups/archives/snapshot-2025-04-15.tar.gz \
+    -C /backups 2025-04-15-120000
+
+# Remote — create the archive directly on the server
+ssh my-backup-server \
+    "mkdir -p /backups/archives && \
+     tar -czf /backups/archives/snapshot-2025-04-15.tar.gz \
+         -C /backups 2025-04-15-120000"
+
+# Remote — stream the archive to local storage
+# (no temporary disk space needed on the server)
+ssh my-backup-server \
+    "tar -czf - -C /backups 2025-04-15-120000" \
+    > /local/archives/snapshot-2025-04-15.tar.gz
+```
+
+Because the archive filename does not match `YYYY-MM-DD-HHMMSS`, it is invisible
+to the retention engine and will never be automatically deleted — just like a
+pinned folder.
+
+To extract the archive when you need it:
+
+```bash
+tar -xzf snapshot-2025-04-15.tar.gz
+```
+
+> **Note on size:** Because `tar` stores each file independently, the archive
+> will be larger than the snapshot's apparent on-disk usage (which benefits from
+> hard-link deduplication). The archive size reflects the true, unshared size of
+> the data at that point in time — which is exactly what makes it a reliable
+> standalone copy.
 
 ## Storage efficiency and data safety
 
