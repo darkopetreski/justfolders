@@ -237,6 +237,31 @@ pub fn classify_snapshots(
     kept
 }
 
+/// Builds a compact one-line summary of the active policy rules, e.g.
+/// `Policy: within=7d  hourly=2  daily=3  weekly=2  monthly=12  yearly=2`
+///
+/// Fields that are `None` or `0` (disabled) are omitted.
+fn format_policy_summary(policy: &RetentionPolicy) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    let fields: &[(&str, Option<u32>, &str)] = &[
+        ("within", policy.keep_within_days, "d"),
+        ("hourly", policy.keep_hourly,      ""),
+        ("daily",  policy.keep_daily,       ""),
+        ("weekly", policy.keep_weekly,      ""),
+        ("monthly",policy.keep_monthly,     ""),
+        ("yearly", policy.keep_yearly,      ""),
+    ];
+
+    for (name, value, suffix) in fields {
+        if let Some(n) = value.filter(|&n| n > 0) {
+            parts.push(format!("{}={}{}", name, n, suffix));
+        }
+    }
+
+    format!("Policy: {}", parts.join("  "))
+}
+
 /// Print `snapshots` grouped by retention category.
 ///
 /// When no policy rules are active the list is printed flat, oldest-first.
@@ -248,6 +273,9 @@ pub fn print_snapshot_groups(policy: &RetentionPolicy, snapshots: &[String]) {
         snapshots.iter().for_each(|s| println!("{s}"));
         return;
     }
+
+    println!("{}", format_policy_summary(policy));
+    println!();
 
     let categorized = classify_snapshots(policy, snapshots);
 
