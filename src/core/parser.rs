@@ -150,24 +150,8 @@ pub struct InitArgs {
     pub keep_yearly: Option<u32>,
 
     /// Keep all snapshots within the last N hours.
-    #[arg(long = "keep-within-hourly", value_name = "N")]
-    pub keep_within_hourly: Option<u32>,
-
-    /// Keep all snapshots within the last N days.
-    #[arg(long = "keep-within-daily", value_name = "N")]
-    pub keep_within_daily: Option<u32>,
-
-    /// Keep all snapshots within the last N weeks.
-    #[arg(long = "keep-within-weekly", value_name = "N")]
-    pub keep_within_weekly: Option<u32>,
-
-    /// Keep all snapshots within the last N months.
-    #[arg(long = "keep-within-monthly", value_name = "N")]
-    pub keep_within_monthly: Option<u32>,
-
-    /// Keep all snapshots within the last N years.
-    #[arg(long = "keep-within-yearly", value_name = "N")]
-    pub keep_within_yearly: Option<u32>,
+    #[arg(long = "keep-within-days", value_name = "N")]
+    pub keep_within_days: Option<u32>,
     
     /// Print the config to stdout instead of saving it.
     #[arg(long = "dry-run")]

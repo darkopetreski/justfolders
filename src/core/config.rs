@@ -160,11 +160,7 @@ pub struct RetentionPolicy {
     pub keep_weekly: Option<u32>,
     pub keep_monthly: Option<u32>,
     pub keep_yearly: Option<u32>,
-    pub keep_within_hourly: Option<u32>,
-    pub keep_within_daily: Option<u32>,
-    pub keep_within_weekly: Option<u32>,
-    pub keep_within_monthly: Option<u32>,
-    pub keep_within_yearly: Option<u32>,
+    pub keep_within_days: Option<u32>,
 }
 
 impl RetentionPolicy {
@@ -179,11 +175,7 @@ impl RetentionPolicy {
             self.keep_yearly,
         ];
         let within_rules = [
-            self.keep_within_hourly,
-            self.keep_within_daily,
-            self.keep_within_weekly,
-            self.keep_within_monthly,
-            self.keep_within_yearly,
+            self.keep_within_days,
         ];
         count_rules.iter().chain(within_rules.iter()).all(|v| v.map_or(true, |n| n == 0))
     }
@@ -204,11 +196,7 @@ impl RetentionPolicy {
             keep_weekly: get_uint("keep_weekly")?,
             keep_monthly: get_uint("keep_monthly")?,
             keep_yearly: get_uint("keep_yearly")?,
-            keep_within_hourly: get_uint("keep_within_hourly")?,
-            keep_within_daily: get_uint("keep_within_daily")?,
-            keep_within_weekly: get_uint("keep_within_weekly")?,
-            keep_within_monthly: get_uint("keep_within_monthly")?,
-            keep_within_yearly: get_uint("keep_within_yearly")?,
+            keep_within_days: get_uint("keep_within_days")?,
         })
     }
 }
@@ -394,11 +382,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
     let keep_weekly = optional_policy_line("keep_weekly", p.keep_weekly);
     let keep_monthly = optional_policy_line("keep_monthly", p.keep_monthly);
     let keep_yearly = optional_policy_line("keep_yearly", p.keep_yearly);
-    let keep_within_hourly = optional_policy_line("keep_within_hourly", p.keep_within_hourly);
-    let keep_within_daily = optional_policy_line("keep_within_daily", p.keep_within_daily);
-    let keep_within_weekly = optional_policy_line("keep_within_weekly", p.keep_within_weekly);
-    let keep_within_monthly = optional_policy_line("keep_within_monthly", p.keep_within_monthly);
-    let keep_within_yearly = optional_policy_line("keep_within_yearly", p.keep_within_yearly);
+    let keep_within_days = optional_policy_line("keep_within_days", p.keep_within_days);
 
     let raw = format!(
         "
@@ -457,20 +441,8 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         # Number of yearly snapshots to keep (0 = disabled)
         {keep_yearly}
 
-        # Keep all snapshots within the last N hours (0 = disabled)
-        {keep_within_hourly}
-
-        # Keep all snapshots within the last N days (0 = disabled)
-        {keep_within_daily}
-
-        # Keep all snapshots within the last N weeks (0 = disabled)
-        {keep_within_weekly}
-
-        # Keep all snapshots within the last N months (0 = disabled)
-        {keep_within_monthly}
-
-        # Keep all snapshots within the last N years (0 = disabled)
-        {keep_within_yearly}
+        # Keep every snapshot created within the last N days (0 = disabled)
+        {keep_within_days}
 
         [notify]
         # Send email notifications on backup failure (and optionally success).

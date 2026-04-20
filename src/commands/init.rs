@@ -33,11 +33,7 @@ impl From<InitArgs> for ConfigGeneratorParams {
                 keep_weekly: args.keep_weekly,
                 keep_monthly: args.keep_monthly,
                 keep_yearly: args.keep_yearly,
-                keep_within_hourly: args.keep_within_hourly,
-                keep_within_daily: args.keep_within_daily,
-                keep_within_weekly: args.keep_within_weekly,
-                keep_within_monthly: args.keep_within_monthly,
-                keep_within_yearly: args.keep_within_yearly,
+                keep_within_days: args.keep_within_days,
             },
         }
     }
