@@ -119,33 +119,33 @@ fn run_policy(
 
     // A value of 0 is treated as "disabled" (matches the config file comment
     // "0 = disabled").
+
     if let Some(n) = policy.keep_hourly.filter(|&n| n > 0) {
-        // "Hourly" means the N most recent snapshots from the same calendar
-        // day as the newest snapshot. No per-clock-hour deduplication is
-        // applied: two backups taken within the same hour both count.
+        // "Hourly" means the N most recent snapshots from today's calendar
+        // date (anchored to Local::now(), not pool.first()).  No per-clock-hour
+        // deduplication is applied: two backups in the same hour both count.
         // Snapshots from any earlier day bypass this rule entirely and fall
         // through to the daily/weekly/... rules.
-        let today = pool.first().map(|(_, dt)| (dt.year(), dt.month(), dt.day()));
-        if let Some(today) = today {
-            let (todays, older): (Vec<_>, Vec<_>) = pool
-                .into_iter()
-                .partition(|(_, dt)| (dt.year(), dt.month(), dt.day()) == today);
+        let today = Local::now().date_naive();
+        let today_tuple = (today.year(), today.month(), today.day());
+        let (todays, older): (Vec<_>, Vec<_>) = pool
+            .into_iter()
+            .partition(|(_, dt)| (dt.year(), dt.month(), dt.day()) == today_tuple);
 
-            // `todays` is newest-first; claim the first N, pass the rest on.
-            let mut leftover = Vec::new();
-            let mut claimed = 0u32;
-            for (name, dt) in todays {
-                if claimed < n {
-                    kept.push((name, SnapshotCategory::Hourly));
-                    claimed += 1;
-                } else {
-                    leftover.push((name, dt));
-                }
+        // `todays` is newest-first; claim the first N, pass the rest on.
+        let mut leftover = Vec::new();
+        let mut claimed = 0u32;
+        for (name, dt) in todays {
+            if claimed < n {
+                kept.push((name, SnapshotCategory::Hourly));
+                claimed += 1;
+            } else {
+                leftover.push((name, dt));
             }
-            leftover.extend(older);
-            leftover.sort_by(|a, b| b.1.cmp(&a.1));
-            pool = leftover;
         }
+        leftover.extend(older);
+        leftover.sort_by(|a, b| b.1.cmp(&a.1));
+        pool = leftover;
     }
 
     if let Some(n) = policy.keep_daily.filter(|&n| n > 0) {
@@ -187,21 +187,32 @@ fn run_policy(
         );
     }
 
-    // Safety-net: keep every snapshot within the last N calendar days that was
-    // not already claimed by a count-based rule.  Uses the real current date so
-    // the window is always anchored to "now", not to the newest snapshot.
+    // Post-process keep_within_days: count-based rules ran on the full pool so
+    // cascading (daily → weekly → monthly → yearly) is unaffected.  Now:
+    //   • Override the category of any within-window snapshot already in `kept`
+    //     to WithinDays, so they display under "Recent" instead of Daily/etc.
+    //   • Rescue any within-window snapshot still in `pool` (not claimed by any
+    //     count-based rule) so it is kept rather than deleted.
     if let Some(n) = policy.keep_within_days.filter(|&n| n > 0) {
         let today = Local::now().date_naive();
         let cutoff = today - Duration::days(n as i64);
-        let mut new_pool = Vec::new();
-        for (name, dt) in pool {
-            if dt.date() >= cutoff {
-                kept.push((name, SnapshotCategory::WithinDays));
-            } else {
-                new_pool.push((name, dt));
+
+        for (name, cat) in &mut kept {
+            if let Some(dt) = parse_snapshot_date(name) {
+                if dt.date() >= cutoff {
+                    *cat = SnapshotCategory::WithinDays;
+                }
             }
         }
-        pool = new_pool;
+
+        pool.retain(|(name, dt)| {
+            if dt.date() >= cutoff {
+                kept.push((name.clone(), SnapshotCategory::WithinDays));
+                false
+            } else {
+                true
+            }
+        });
     }
 
     let to_delete = pool.into_iter().map(|(s, _)| s).collect();
@@ -301,7 +312,7 @@ pub fn print_snapshot_groups(policy: &RetentionPolicy, snapshots: &[String]) {
 
     let mut first = true;
     for category in &order {
-        let entries: Vec<&str> = categorized
+        let mut entries: Vec<&str> = categorized
             .iter()
             .filter(|(_, cat)| cat == category)
             .map(|(n, _)| n.as_str())
@@ -309,6 +320,7 @@ pub fn print_snapshot_groups(policy: &RetentionPolicy, snapshots: &[String]) {
         if entries.is_empty() {
             continue;
         }
+        entries.sort_by(|a, b| b.cmp(a)); // newest-first within each group
         if !first { println!(); }
         println!("{}", category.label());
         println!("{sep}");
