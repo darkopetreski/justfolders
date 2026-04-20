@@ -207,6 +207,10 @@ Use `--dry-run` to print the generated config to stdout without saving it.
 justfolders backup --config backup.ini
 ```
 
+After a successful run, JustFolders applies the **`[policy]`** section of your config,
+deletes snapshots that no longer match the rules, then prints a grouped summary of what
+remains. See **[Retention policy](#retention-policy)** below for how each rule behaves.
+
 ### How a backup run works
 
 Every backup follows the same three steps:
@@ -245,6 +249,90 @@ The running backup and its `tmp/` directory are left untouched.
 If a `backup.lock/` is left behind by a crash so severe that the process entry is gone
 (e.g. a hard reboot), it is detected as stale on the next run and cleared automatically.
 No manual intervention is needed.
+
+## Retention policy
+
+Snapshot names are always `YYYY-MM-DD-HHMMSS`. The retention engine only **deletes**
+directories that match that pattern; anything you rename (see [Pinning a snapshot forever](#7-pinning-a-snapshot-forever)) is ignored forever.
+
+Configuration lives in the **`[policy]`** section of your `.ini` file:
+
+```ini
+[policy]
+keep_within_days = 7    # 0 = disabled
+keep_hourly      = 4
+keep_daily       = 7
+keep_weekly      = 4
+keep_monthly     = 12
+keep_yearly      = 5
+```
+
+- A key that is **missing** or set to **`0`** disables that rule.
+- You can enable any subset; the rest stay off.
+- **“Keep” always wins:** a snapshot is removed only if *no* rule requires keeping it.
+
+### How rules interact (cascading buckets)
+
+Count-based rules run in order from **fine → coarse**: **hourly → daily → weekly → monthly → yearly**.
+
+For each step, JustFolders looks at snapshots **not yet claimed** by a finer rule. It also
+**skips whole time buckets** (days, ISO weeks, months, years) that are *already represented*
+by a snapshot kept earlier. That way **weekly** does not waste its slots on the same week
+**daily** already covered — you get real older weeks instead of duplicates (this is a
+common pitfall in other tools’ retention logic).
+
+**`keep_within_days`** is special: count-based rules always see the **full** snapshot list
+so cascading works correctly. *After* that, any snapshot whose **calendar date** falls in
+the last *N* days (from the machine’s local “today” when the policy runs) is **forced kept**:
+either re-labelled under **Recent** in the printed summary, or **rescued** from deletion if
+no count-based rule picked it up. So you can run many backups per day and still keep all of
+them for the recent window, while **daily / weekly / …** extend coverage further back.
+
+### Rule reference
+
+| Key | What it does |
+|-----|----------------|
+| **`keep_hourly`** | Keeps the **N most recent** snapshots whose date is **today** (local calendar date when the backup runs). It is **not** “one snapshot per clock hour”: two runs at 23:19 and 23:20 both count toward *N*. If you only back up weekly, most days have no “today” snapshots and this rule simply claims nothing useful — pair it with **daily** or rely on **`keep_within_days`**. |
+| **`keep_daily`** | Keeps up to **N distinct calendar days**, choosing the **newest** snapshot in each day. Days already covered by **hourly** are skipped so coarser rules can use their quota on older periods. |
+| **`keep_weekly`** | Keeps up to **N distinct [ISO weeks](https://en.wikipedia.org/wiki/ISO_week_date)** (week-year + week number), again the **newest** snapshot per bucket. Weeks already represented by **hourly/daily** snapshots are skipped. |
+| **`keep_monthly`** | Up to **N distinct calendar months** (newest snapshot per month), skipping months already covered by finer rules. |
+| **`keep_yearly`** | Up to **N distinct calendar years**, same skipping idea. |
+| **`keep_within_days`** | Keeps **every** snapshot from the last **N calendar days** (inclusive of “today”), **no cap** on how many per day. Shown as **Recent** in grouped output. Anchored to the **real current date**, not “the date of your newest snapshot” — so behaviour stays predictable if you list snapshots a day after the last backup. |
+
+### Edge cases and expectations
+
+**Irregular backup schedules** (e.g. only on Fridays)  
+You might have fewer distinct days/weeks in the destination than your *N* values. The
+engine keeps as many **distinct** buckets as exist; it does not invent missing weeks.
+**Weekly/monthly/yearly** only fill in once there are snapshots in **older** buckets not
+already covered by **daily**.
+
+**Combining `keep_within_days` with counts**  
+Recent days can hold **many** snapshots (all kept). **Daily / weekly / …** still claim
+their quotas from the full timeline first, then **Recent** is applied for display and for
+anything in the window that would otherwise be deleted. You get both deep history *and*
+a safe “keep everything recent” window.
+
+**Very aggressive numbers** (e.g. `keep_daily = 1` only)  
+After the next backup you might drop to a **single** retained snapshot besides the one just
+created — by design. You are **not** left with **zero** snapshots after a successful backup:
+the snapshot created in that run is always protected.
+
+**Time zones and “today”**  
+All calendar boundaries use the **system local timezone** of the machine running JustFolders
+(`chrono::Local`). Align expectations with where backups run (e.g. cron on the same host).
+
+**Changing policy in the `.ini`**  
+The next `backup` run applies the new rules immediately. Snapshots that no longer match
+may be deleted. Tightening policy can remove a lot of history in one go — plan ahead, or
+**pin** important folders before changing numbers.
+
+**What retention never touches**  
+`tmp/`, `latest`, `backup.lock/`, `.logs/`, `SHA256SUMS`, and any directory whose name is
+**not** exactly `YYYY-MM-DD-HHMMSS` are not subject to this algorithm.
+
+For the full design notes (including why `keep_within_days` is a post-process), see the
+module documentation in `src/core/retention.rs` in the repository.
 
 ### 3. List snapshots
 
