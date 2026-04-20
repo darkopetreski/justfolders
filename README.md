@@ -493,6 +493,19 @@ tar -xzf snapshot-2025-04-15.tar.gz
 > the data at that point in time — which is exactly what makes it a reliable
 > standalone copy.
 
+**Data integrity:** The archive is not only convenient for transport; it is a
+**second physical embodiment** of the same logical snapshot. Hard-linked
+snapshots on one volume share blocks; a silent error in those blocks can surface
+in every snapshot that references them. The `tar` stream writes out each file’s
+bytes anew, so the archive’s payload is **not** tied to those original inodes.
+Store the archive on **different media** (another disk, removable drive, or
+offsite object storage) and you materially **improve resilience** to media
+degradation and localized corruption for that frozen point in time—while
+accepting that the archive medium must itself be monitored and verified over its
+lifetime. This complements, rather than replaces, [`verify`](#4-verify-a-snapshot)
+on live snapshots. For the underlying tradeoff, see
+[The hard-link and bit-rot tradeoff](#the-hard-link-and-bit-rot-tradeoff).
+
 ## Storage efficiency and data safety
 
 ### How hard-link deduplication works
@@ -526,6 +539,17 @@ This means:
 - To be protected against hardware failure and bit-rot, you need an independent copy
   on a **different physical device**.
 
+**Self-contained archives.** A practical way to obtain such a copy for a *specific*
+point in time—without giving up space-efficient snapshots for routine retention—is
+described in [Creating a self-contained archive](#8-creating-a-self-contained-archive).
+Because archiving **materializes** each file’s data into a new artifact (hard links
+are not preserved as shared storage inside the archive), corruption of blocks on the
+primary backup volume does not automatically invalidate bytes already written into
+an archive you stored **elsewhere**. Used together with offsite or secondary media,
+that improves your odds of recovering a known-good state when the live snapshot
+tree is no longer trustworthy. It is not a substitute for diverse backups and
+periodic verification; it is an additional layer for milestones you care about most.
+
 ### The 3-2-1 rule
 
 The industry standard for reliable backups is the **3-2-1 rule**:
@@ -555,8 +579,8 @@ redundancy, repair) silent corruption automatically. This largely eliminates the
 risk for files stored on that filesystem.
 
 On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
-Running `justfolders verify` periodically — once implemented — will fill this gap by
-re-checksumming snapshot files against a manifest recorded at backup time.
+Running [`justfolders verify`](#4-verify-a-snapshot) periodically re-checksums files
+against the manifest recorded at backup time and helps detect corruption early.
 
 ## SSH Key Configuration
 
