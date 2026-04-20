@@ -16,6 +16,10 @@ struct BackupLock<'a> {
 }
 
 impl<'a> BackupLock<'a> {
+    /// Acquires the backup lock by calling [`StorageBackend::acquire_lock`].
+    ///
+    /// Returns the guard on success.  The lock is released automatically when
+    /// the guard is dropped, even if the backup run returns early via `?`.
     fn acquire(backend: &'a dyn StorageBackend) -> Result<Self, StorageBackendError> {
         backend.acquire_lock()?;
         Ok(Self { backend })
@@ -23,6 +27,10 @@ impl<'a> BackupLock<'a> {
 }
 
 impl Drop for BackupLock<'_> {
+    /// Releases the backup lock unconditionally.
+    ///
+    /// Errors are printed to stderr but never propagated — a failed unlock
+    /// must not mask the original backup error or a successful result.
     fn drop(&mut self) {
         if let Err(e) = self.backend.release_lock() {
             eprintln!("warning: failed to release backup lock: {e}");
@@ -76,6 +84,10 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     outcome
 }
 
+/// Performs the actual backup steps: acquire lock → rsync → finalize → apply policy → print summary.
+///
+/// Separated from [`run`] so the notification logic in `run` can wrap a single
+/// `Result` regardless of which step failed.
 fn do_backup(config: &Config) -> Result<(), BackupError> {
     let layout = BackupLayout::new(config);
     layout.prepare_log_dir()?;

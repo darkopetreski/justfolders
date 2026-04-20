@@ -4,7 +4,11 @@ use crate::core::parser::VerifyArgs;
 use crate::core::storage_backend::{from_config, StorageBackendError};
 use thiserror::Error;
 
-/// Expected snapshot name pattern: `YYYY-MM-DD-HHMMSS` (17 chars).
+/// Validates that `name` looks like a snapshot name (`YYYY-MM-DD-HHMMSS`, 17 chars).
+///
+/// This is a lightweight guard on the user-supplied `--snapshot` argument before
+/// it is passed to the backend.  The backend's own `validate_snapshot_name` provides
+/// the authoritative check; this one exists to give a friendlier CLI error message.
 fn validate_snapshot_arg(name: &str) -> Result<(), VerifyError> {
     let valid = name.len() == 17
         && name.chars().enumerate().all(|(i, c)| match i {

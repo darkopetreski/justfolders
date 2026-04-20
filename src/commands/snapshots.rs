@@ -42,6 +42,13 @@ pub fn run(args: SnapshotsArgs) -> Result<(), SnapshotsError> {
     print_grouped(&config.policy, &snapshots);
     Ok(())
 }
+/// Prints `snapshots` grouped by retention category to stdout.
+///
+/// Display order: Recent → Hourly → Daily → Weekly → Monthly → Yearly.
+/// Snapshots not claimed by any rule are shown under "Other" at the bottom.
+/// Entries within each section are sorted newest-first.
+///
+/// NOTE: the order array must stay in sync with [`crate::core::retention::print_snapshot_groups`].
 fn print_grouped(policy: &crate::core::config::RetentionPolicy, snapshots: &[String]) {
     let categorized = classify_snapshots(policy, snapshots);
 
@@ -59,6 +66,7 @@ fn print_grouped(policy: &crate::core::config::RetentionPolicy, snapshots: &[Str
 
     let sep = "─".repeat(22);
     let order = [
+        SnapshotCategory::WithinDays,
         SnapshotCategory::Hourly,
         SnapshotCategory::Daily,
         SnapshotCategory::Weekly,
@@ -69,13 +77,14 @@ fn print_grouped(policy: &crate::core::config::RetentionPolicy, snapshots: &[Str
     let mut first_section = true;
 
     for category in &order {
-        let entries: Vec<&str> = categorized
+        let mut entries: Vec<&str> = categorized
             .iter()
             .filter(|(_, cat)| cat == category)
             .map(|(name, _)| name.as_str())
             .collect();
 
         if !entries.is_empty() {
+            entries.sort_by(|a, b| b.cmp(a)); // newest-first
             if !first_section {
                 println!();
             }

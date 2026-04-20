@@ -33,6 +33,11 @@ pub fn send_backup_result(cfg: &SmtpConfig, succeeded: bool, src: &str, detail: 
     }
 }
 
+/// Sends a single email via SMTP using the settings in `cfg`.
+///
+/// The `from` and `to` addresses were validated as parseable `Mailbox` values
+/// when the config was loaded, so the `.parse().unwrap()` calls here are safe —
+/// a bad address would have produced a `ConfigError` at startup.
 fn send(cfg: &SmtpConfig, subject: &str, body: &str) -> Result<(), lettre::transport::smtp::Error> {
     // Both addresses were validated as parseable Mailboxes in SmtpConfig::load,
     // so these unwraps are safe — a bad address is caught at config load time.

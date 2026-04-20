@@ -75,6 +75,19 @@ impl Rsync {
         Ok(())
     }
 
+    /// Constructs the rsync [`Command`] from `config` and `layout`.
+    ///
+    /// Applies flags in this order:
+    /// 1. Custom or default rsync flags from config.
+    /// 2. `--exclude-from` if set.
+    /// 3. `--bwlimit` if set.
+    /// 4. `-e ssh …` (with port and optional identity file) when either side is remote.
+    /// 5. `--link-dest` pointing to the previous `latest` snapshot, if it exists.
+    /// 6. `--log-file` when logging is enabled.
+    /// 7. Source and destination arguments.
+    ///
+    /// Prints the full command to stdout before returning it, so the user can see
+    /// exactly what will be executed.
     fn build_cmd(config: &Config, layout: &BackupLayout) -> Result<Command, RsyncError> {
         let mut cmd = Command::new("rsync");
 

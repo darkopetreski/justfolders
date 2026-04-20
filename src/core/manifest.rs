@@ -30,6 +30,7 @@ pub struct VerifyReport {
 }
 
 impl VerifyReport {
+    /// Returns `true` when no checksum mismatches or missing files were found.
     pub fn is_clean(&self) -> bool {
         self.failures.is_empty()
     }
@@ -59,7 +60,18 @@ pub fn generate_local(snapshot_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Recursively collects (relative_path, sha256_hex) pairs from `dir`.
+/// Recursively walks `dir` and appends `(relative_path, sha256_hex)` pairs to `out`.
+///
+/// - `root` is the snapshot root used to compute relative paths; it stays fixed
+///   across the recursive calls while `dir` advances into sub-directories.
+/// - `seen` maps inode numbers to already-computed hashes so hard-linked files
+///   (shared with a previous snapshot via `--link-dest`) are checksummed only
+///   once.  On non-Unix platforms where inodes are unavailable every file is
+///   hashed independently.
+/// - Symlinks are skipped — they represent directory structure, not file content,
+///   and following them could cause the walk to escape the snapshot directory.
+/// - The `SHA256SUMS` manifest file itself is excluded so it does not contain
+///   a self-referential entry.
 fn collect_files(
     root: &Path,
     dir: &Path,

@@ -53,6 +53,10 @@ pub enum SmtpTls {
 }
 
 impl SmtpTls {
+    /// Parses a TLS mode string from the config file.
+    ///
+    /// Accepted values (case-insensitive): `"starttls"`, `"tls"`, `"none"`.
+    /// Returns [`ConfigError::InvalidValue`] for any other input.
     fn parse(s: &str) -> Result<Self, ConfigError> {
         match s.trim().to_lowercase().as_str() {
             "starttls" => Ok(Self::StartTls),
@@ -82,6 +86,11 @@ pub struct SmtpConfig {
 }
 
 impl SmtpConfig {
+    /// Loads SMTP settings from the `[notify]` INI section.
+    ///
+    /// Returns `Ok(None)` when the section is absent (notifications disabled).
+    /// `from` and `to` addresses are validated as parseable `Mailbox` values at
+    /// load time so callers can rely on them being well-formed without re-checking.
     fn load(ini: &Ini) -> Result<Option<Self>, ConfigError> {
         // If the section is absent entirely, notifications are disabled.
         let smtp_host = match ini.get("notify", "smtp_host") {
@@ -180,6 +189,11 @@ impl RetentionPolicy {
         count_rules.iter().chain(within_rules.iter()).all(|v| v.map_or(true, |n| n == 0))
     }
 
+    /// Loads retention policy settings from the `[policy]` INI section.
+    ///
+    /// Missing keys are mapped to `None` (rule disabled).  A value of `0` is
+    /// stored as `Some(0)` and treated as disabled by [`RetentionPolicy::is_empty`]
+    /// and the individual rule guards in the retention engine.
     fn load(ini: &Ini) -> Result<Self, ConfigError> {
         let get_uint = |key: &str| -> Result<Option<u32>, ConfigError> {
             ini.getuint("policy", key)
@@ -339,6 +353,11 @@ pub struct ConfigGeneratorParams {
 
 // ── Generation ─────────────────────────────────────────────────────────────
 
+/// Renders a single `[policy]` config line.
+///
+/// When `value` is `Some(n)` the line is active: `key = n`.
+/// When `value` is `None` the line is emitted as a comment placeholder so the
+/// user can see the available option and enable it by uncommenting: `# key = 0`.
 fn optional_policy_line(key: &str, value: Option<u32>) -> String {
     match value {
         Some(v) => format!("{} = {}", key, v),

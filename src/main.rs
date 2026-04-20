@@ -1,6 +1,10 @@
 use justfolders::commands;
 use justfolders::core::parser::{CliParams, Commands};
 
+/// Entry point: parse CLI arguments and dispatch to the appropriate command handler.
+///
+/// All commands return a `Result<(), E: Display>`.  Errors are mapped to `String`
+/// so they can be printed uniformly, and the process exits with code 1 on failure.
 fn main() {
     let cli = CliParams::from_args();
     let result = match cli.command {
