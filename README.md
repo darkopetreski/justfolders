@@ -582,6 +582,105 @@ On standard filesystems (ext4, xfs, NTFS, network shares) there is no such prote
 Running [`justfolders verify`](#4-verify-a-snapshot) periodically re-checksums files
 against the manifest recorded at backup time and helps detect corruption early.
 
+## Pull vs push backups
+
+Backups can be initiated from either side of the connection:
+
+- **Push** — the source machine connects to the backup destination and sends its data there.
+- **Pull** — the backup server connects to the source machine and copies the data back.
+
+JustFolders supports both. Because `src` and `dest` in the config can each be local or remote,
+the same binary covers either topology — run it on the source for a push setup, or on the
+backup server for a pull setup. Snapshotting, hard-linking, and retention work identically;
+the only thing that changes is **who holds the credentials and who initiates the connection.**
+
+That choice has real security implications and is worth making deliberately.
+
+### Pull (backup server initiates)
+
+The backup server holds an SSH key to each source it backs up. Sources do not need any
+credentials to reach the backup destination.
+
+**Advantages**
+
+- **The source cannot reach the backup.** If a source machine is compromised — ransomware,
+  intrusion, a runaway script — the attacker has no path to the backup server. They cannot
+  delete, overwrite, or encrypt snapshots stored elsewhere. This is the strongest argument
+  for pull, and the main reason it is preferred for high-value targets.
+- **Centralized scheduling and inventory.** All cron entries, configs, and logs live on one
+  machine. Adding a new source means adding one config file on the backup server.
+- **Sources stay minimal.** Source machines need only an inbound SSH listener and `rsync` —
+  no backup software, no outbound credentials, no scheduler.
+
+**Downsides**
+
+- **Inbound SSH on every source, usually with broad read access** (often `root`) so the
+  puller can capture system files, mail spools, database dumps, and so on. That is a
+  non-trivial credential and attack surface to grant, and it is awkward when sources sit
+  behind NAT or strict firewalls.
+- **The backup server becomes a high-value target.** It now holds keys that can read
+  everything on every source. A compromise of the backup server is, effectively, a
+  compromise of every source it pulls from. Harden it accordingly: dedicated host, no
+  general-purpose use, restricted SSH, and forced rsync commands on the source side
+  (`rrsync -ro <path>`) so each key can only read the path it is meant to read.
+- **Source-side state changes are harder to coordinate.** Tasks like "dump the database,
+  then back up", or "snapshot the LVM volume, back up the snapshot, release it" are awkward
+  when the puller does not directly own those steps. They typically end up as scheduled
+  jobs on the source plus a time window the puller has to hit — fragile compared to a
+  single ordered script running on the source itself.
+
+### Push (source initiates)
+
+The source machine holds an SSH key to the backup destination and writes its own snapshots there.
+
+**Advantages**
+
+- **Friendlier networking.** Only outbound connections from the source — fine through NAT,
+  dynamic IPs, laptops, and cloud instances behind tight ingress rules. The backup server
+  just needs to accept incoming SSH from known keys.
+- **Local control of timing.** Pre-backup work like database dumps, application quiescing,
+  or filesystem snapshots happens in the same script on the same host, immediately before
+  the push. No cross-machine choreography.
+- **Less trust concentrated on the destination.** Each source only has credentials to its
+  own destination path, not to other sources. Compromising the backup host still loses the
+  archive, but it does not directly hand the attacker read access into every source.
+
+**Downsides**
+
+- **A compromised source can damage its own backups.** Whatever credentials the source
+  uses to push are usable by anyone who takes that source over — including for deleting
+  or overwriting the snapshots already there. This is the central weakness of naive push
+  setups and the main thing ransomware exploits.
+- **Mitigations need real effort.** Common defences include: forcing the SSH key into a
+  write-restricted rsync wrapper (`rrsync -wo <path>`, though that conflicts with anything
+  that needs to rename or delete on the destination — including JustFolders' `tmp/` →
+  snapshot promotion and retention), giving the source a chrooted account whose tree it
+  cannot escape, and — most robustly — having the **backup server itself** take periodic
+  filesystem snapshots (ZFS, btrfs, LVM) of the destination on a schedule the source
+  cannot influence. Without one of these, "push" and "secure against source compromise"
+  do not coexist.
+- **Distributed configuration.** Each source carries its own config, its own cron, its own
+  logs. Auditing "did everything back up last night" means walking every source, not
+  reading one log.
+
+### Practical guidance
+
+A robust real-world setup often combines both:
+
+- Run JustFolders in **push** mode from each source for fast, frequent, locally-scheduled
+  backups — convenient, and a good fit for NAT and firewall realities.
+- On the destination, take periodic **filesystem-level snapshots** (ZFS / btrfs / LVM) that
+  the pushing sources have no way to delete. These act as a tamper-resistant safety net
+  behind the per-source snapshot tree.
+- For the most sensitive systems, also run a **second JustFolders job in pull mode** from a
+  hardened backup host — separate machine, separate keys, separate schedule — so that a
+  full compromise of the source plus its primary destination still leaves an isolated copy
+  somewhere else.
+
+This is the same idea as the [3-2-1 rule](#the-3-2-1-rule) extended to trust boundaries:
+different media, different locations, *and* different attack paths — so a single compromise
+does not propagate to every copy.
+
 ## SSH Key Configuration
 
 JustFolders delegates all remote connections to rsync and SSH.
