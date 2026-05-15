@@ -91,7 +91,7 @@ pub struct InitArgs {
     #[arg(long = "src", required = true)]
     pub src: Location,
 
-    /// Destination directory where backups will be stored.
+    /// Destination directory where backups will be stored. Absolute path.
     #[arg(long = "dest", required = true)]
     pub dest: Location,
 
@@ -117,11 +117,11 @@ pub struct InitArgs {
     #[arg(long = "disable-logs")]
     pub disable_logs: bool,
 
-    /// Directory where log files will be stored. [default: dest/.logs]
+    /// Directory where log files will be stored. [default: dest/.logs] Absolute path.
     #[arg(long = "log-dir", value_name = "DIR")]
     pub log_dir: Option<PathBuf>,
 
-    /// Path to a file containing exclude patterns for rsync.
+    /// Path to a file containing exclude patterns for rsync. Absolute path. 
     #[arg(long = "exclude-from", value_name = "FILE")]
     pub exclude_from: Option<String>,
 
