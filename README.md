@@ -656,6 +656,12 @@ eval $(ssh-agent)
 ssh-add ~/.ssh/my_backup_key
 ```
 
+## Excluding files and directories
+
+JustFolders can skip selected files and directories on every backup run by forwarding an rsync exclude-patterns file to rsync. Point at the file with `--exclude-from <FILE>` when generating a config (or add `exclude_from = /path/to/excludes.txt` to the `[default]` section of an existing `.ini`); the patterns then apply automatically on each `justfolders backup`.
+
+For the full pattern syntax — wildcards, anchoring, include rules, common pitfalls, and ready-to-copy templates — see the [Exclude-patterns file reference](rsync-exclude-from-manual.md).
+
 ## Warning
 
 Backups are critical. Bugs can and do happen.
