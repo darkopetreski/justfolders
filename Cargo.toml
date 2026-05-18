@@ -16,3 +16,9 @@ thiserror = "2.0.18"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[profile.release]
+# Link-time optimization: optimize and drop unused code across all crates (smaller binary; slower release builds).
+lto = true
+# One codegen unit per crate: better per-crate optimization; complements LTO (slower compile, slightly smaller/faster binary).
+codegen-units = 1
