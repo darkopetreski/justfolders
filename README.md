@@ -12,6 +12,10 @@ No agents.
 No proprietary formats.
 Just folders.
 
+## Status
+
+Early release. The CLI and config format may change before 1.0. Always verify your backups.
+
 ## Requirements
 
 | Dependency | Where required | Notes |
