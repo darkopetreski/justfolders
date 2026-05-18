@@ -253,7 +253,7 @@ No manual intervention is needed.
 ## Retention policy
 
 Snapshot names are always `YYYY-MM-DD-HHMMSS`. The retention engine only **deletes**
-directories that match that pattern; anything you rename (see [Pinning a snapshot forever](#7-pinning-a-snapshot-forever)) is ignored forever.
+directories that match that pattern; anything you rename (see [Pinning a snapshot forever](#8-pinning-a-snapshot-forever)) is ignored forever.
 
 Configuration lives in the **`[policy]`** section of your `.ini` file:
 
@@ -388,7 +388,149 @@ If the SMTP send fails (e.g. wrong credentials, unreachable server), a warning i
 printed to stderr and the backup exit code is unaffected — a notification failure
 never masks a backup error.
 
-### 6. Restore
+### 6. Error handling and failure modes
+
+Backups touch a lot of files, and a long-running transfer can hit edge cases that
+are not really "the backup failed" — a single file you cannot read, a temp file
+that vanished mid-copy, a permission you forgot to grant on one subdirectory.
+JustFolders distinguishes these soft conditions from genuine failures so a
+perfectly good 500 GB snapshot is not thrown away because one cache file was
+unreadable.
+
+A backup run can finish in one of three states. The state is decided by rsync's
+exit code — rsync deliberately uses different codes to communicate severity, and
+JustFolders surfaces that distinction explicitly:
+
+| State | rsync exit code | Snapshot created? | `latest` updated? | Notification subject |
+|-------|-----------------|-------------------|-------------------|----------------------|
+| **Clean**    | `0`           | yes    | yes    | `Backup OK: <src>` |
+| **Warnings** | `23` or `24`  | yes    | yes    | `Backup WARNING: <src>` |
+| **Failed**   | anything else | **no** | **no** | `Backup FAILED: <src>` |
+
+- **Clean** — every file in the source was transferred. The normal case.
+- **Warnings** — some files were not transferred, but the rest of the run
+  completed. By far the most common cause is *permission denied* on individual
+  files (e.g. backing up `/` as a non-root user and hitting `/root/.ssh/…`),
+  followed by files that vanished mid-transfer (rotating logs, browser caches,
+  sockets). The snapshot is still created from the files that *were*
+  transferred, and `latest` is updated. The rsync exit code is included in the
+  email so you can tell which case it is — `23` ("partial transfer due to
+  error") vs `24` ("vanished source files").
+- **Failed** — anything else: SSH could not connect, the destination ran out of
+  disk, rsync crashed, the lock could not be acquired, the manifest step
+  failed, etc. The in-progress directory is left on disk for inspection but is
+  **not** promoted to a real snapshot, and `latest` is **not** changed. The
+  backup chain is unaffected — the previous `latest` snapshot is still your
+  most recent good backup.
+
+#### Why warnings are not failures by default
+
+Every mainstream backup tool — restic, borg, rsnapshot, BackupPC, Bacula —
+treats "some files could not be read" as a soft condition rather than a hard
+failure. The reasoning is straightforward: on any realistically sized
+filesystem, you will eventually hit a file you cannot read (permission, lock,
+transient I/O issue), and the alternative — discarding the entire snapshot
+because of one such file — means large filesystems silently fail to back up
+forever.
+
+JustFolders follows the same convention: warnings produce a usable snapshot,
+and the user is told which files were skipped via the notification email so the
+underlying issue can be investigated.
+
+#### Email notifications are strongly recommended
+
+Because warnings and failures only become visible through the notification
+email (and the rsync log file, but cron jobs typically run unattended),
+**setting up SMTP via the `[notify]` section is strongly recommended for any
+production backup**. Without notifications, a silently degrading backup — for
+example, a permission that was recently changed and now blocks 30% of your home
+directory — will not be noticed until you actually need to restore.
+
+The notification rules are simple:
+
+- `Backup FAILED` is sent **always**, regardless of any flag — failure emails
+  cannot be suppressed.
+- `Backup WARNING` is sent when `on_warnings = true` (the default).
+- `Backup OK` is sent when `on_success = true` (default off — useful for daily
+  "yes, the backup ran" peace-of-mind emails).
+
+See [Email notifications](#5-email-notifications) for how to fill in the
+`[notify]` section.
+
+#### Strict mode — failing on any skipped file
+
+For environments where a partial backup is not acceptable (regulated,
+compliance, anything covered by an SLA that says "every file"), set
+`strict = true` in the `[default]` section:
+
+```ini
+[default]
+src    = /home/me
+dest   = /backups
+strict = true
+```
+
+With `strict = true`, rsync exit codes 23 and 24 are escalated to a hard
+failure: the in-progress directory is **not** promoted, `latest` stays pointing
+at the previous snapshot, and a `Backup FAILED` email is sent. Use this only
+when you would genuinely rather retry the backup than keep a partial one — for
+most users the default (`strict = false`) is the right choice.
+
+#### Use cases
+
+A few worked examples of how the three-state model handles real situations:
+
+**1. Permission denied on a single file.**  
+You back up `/home/alice` as the `alice` user, and a colleague leaves a file
+with `chmod 000` in `~/projects/`. rsync prints "Permission denied" for that
+one file and exits 23. JustFolders creates the snapshot, promotes `latest`, and
+sends a `Backup WARNING` email containing the rsync output. You see exactly
+which file was skipped and can either fix the permission or add the file to
+`exclude_from`.
+
+**2. Files vanishing on a live system.**  
+You back up a live web server while `/var/log/nginx` rotates mid-transfer. A
+few log files disappear between rsync indexing the directory and copying them.
+Exit code 24. Snapshot is created, email body lists the vanished files. If
+this becomes routine noise, set `on_warnings = false` in the `[notify]` section
+— the snapshot is still made, you just stop receiving the email.
+
+**3. Destination is unreachable.**  
+The backup server is rebooting when the backup starts. SSH fails to connect,
+rsync exits with code 255. JustFolders sends a `Backup FAILED` email and exits
+non-zero. The previous `latest` snapshot is untouched and the next scheduled
+run picks up automatically.
+
+**4. Destination disk full.**  
+rsync exits with code 11 (file I/O error) midway through the transfer.
+`Backup FAILED` email is sent. The partially-written `.in_progress` directory
+is left on disk so you can inspect it (or `rm -rf` it once you have made room).
+`latest` still points at the previous snapshot, so older backups remain usable.
+
+**5. Strict mode on a regulated dataset.**  
+You run a `strict = true` backup of a dataset under SLA, and a colleague's
+home directory has unreadable cache files. rsync exits 23. Because strict is
+enabled this becomes a hard failure: the snapshot is discarded and a
+`Backup FAILED` email is sent. You fix the permissions and retry — the next
+run either succeeds cleanly or fails for a real reason. You never end up with
+a half-complete snapshot you might mistake for a good one.
+
+#### Where to look when something goes wrong
+
+In order of usefulness:
+
+1. **The notification email body** — contains the rsync exit code and the
+   captured stderr (which lists the actual unreadable files for code 23, or
+   vanished files for code 24).
+2. **Terminal stderr** — rsync's stderr is also mirrored to the terminal as
+   the backup runs, so anything in the email is also visible if you ran the
+   backup interactively.
+3. **`<dest>/.logs/<timestamp>.log`** — written by rsync's `--log-file`
+   (unless `disable_logs = true`). Contains the per-file transfer log.
+4. **The `.in_progress` directory** — left on disk after a hard failure for
+   inspection. Safe to delete once you no longer need it.
+
+### 7. Restore
 
 There is no restore command — and there does not need to be one.
 
@@ -420,7 +562,7 @@ Because snapshots are plain folders, you can also browse them in any file manage
 open files directly without any extraction step, or restore on a machine that has never
 had JustFolders installed. No special software is needed — ever.
 
-### 7. Pinning a snapshot forever
+### 8. Pinning a snapshot forever
 
 The retention engine only considers directories whose name matches the
 `YYYY-MM-DD-HHMMSS` format. **Renaming a snapshot to anything else makes it
@@ -449,7 +591,7 @@ original timestamp:
 mv /backups/before-migration /backups/2025-04-15-120000
 ```
 
-### 8. Creating a self-contained archive
+### 9. Creating a self-contained archive
 
 A snapshot is a directory of hard-linked files — the files are space-efficient on
 disk but share underlying data with other snapshots. Running `tar` on a snapshot
@@ -541,7 +683,7 @@ This means:
 
 **Self-contained archives.** A practical way to obtain such a copy for a *specific*
 point in time—without giving up space-efficient snapshots for routine retention—is
-described in [Creating a self-contained archive](#8-creating-a-self-contained-archive).
+described in [Creating a self-contained archive](#9-creating-a-self-contained-archive).
 Because archiving **materializes** each file’s data into a new artifact (hard links
 are not preserved as shared storage inside the archive), corruption of blocks on the
 primary backup volume does not automatically invalidate bytes already written into
