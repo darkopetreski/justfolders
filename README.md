@@ -418,8 +418,9 @@ JustFolders surfaces that distinction explicitly:
   error") vs `24` ("vanished source files").
 - **Failed** — anything else: SSH could not connect, the destination ran out of
   disk, rsync crashed, the lock could not be acquired, the manifest step
-  failed, etc. The in-progress directory is left on disk for inspection but is
-  **not** promoted to a real snapshot, and `latest` is **not** changed. The
+  failed, etc. The `tmp/` directory (where rsync stages the in-progress
+  transfer) is left on disk for inspection but is **not** promoted to a real
+  snapshot, and `latest` is **not** changed. The
   backup chain is unaffected — the previous `latest` snapshot is still your
   most recent good backup.
 
@@ -470,7 +471,7 @@ strict = true
 ```
 
 With `strict = true`, rsync exit codes 23 and 24 are escalated to a hard
-failure: the in-progress directory is **not** promoted, `latest` stays pointing
+failure: the `tmp/` directory is **not** promoted, `latest` stays pointing
 at the previous snapshot, and a `Backup FAILED` email is sent. Use this only
 when you would genuinely rather retry the backup than keep a partial one — for
 most users the default (`strict = false`) is the right choice.
@@ -502,8 +503,8 @@ run picks up automatically.
 
 **4. Destination disk full.**  
 rsync exits with code 11 (file I/O error) midway through the transfer.
-`Backup FAILED` email is sent. The partially-written `.in_progress` directory
-is left on disk so you can inspect it (or `rm -rf` it once you have made room).
+`Backup FAILED` email is sent. The partially-written `tmp/` directory is left
+on disk so you can inspect it (or `rm -rf` it once you have made room).
 `latest` still points at the previous snapshot, so older backups remain usable.
 
 **5. Strict mode on a regulated dataset.**  
@@ -526,8 +527,10 @@ In order of usefulness:
    backup interactively.
 3. **`<dest>/.logs/<timestamp>.log`** — written by rsync's `--log-file`
    (unless `disable_logs = true`). Contains the per-file transfer log.
-4. **The `.in_progress` directory** — left on disk after a hard failure for
-   inspection. Safe to delete once you no longer need it.
+4. **The `tmp/` directory** under the destination — where rsync stages the
+   in-progress transfer. Left on disk after a hard failure for inspection.
+   Safe to delete (`rm -rf <dest>/tmp`) once you no longer need it. A
+   successful next run will simply create it again.
 
 ### 7. Restore
 
