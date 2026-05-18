@@ -487,7 +487,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         #                   The run is reported as 'completed with warnings' and
         #                   the skipped files are listed in the email (if
         #                   [notify] is enabled). This is what every mainstream
-        #                   backup tool  does and  is the right choice for almost everyone.
+        #                   backup tool does and is the right choice for almost everyone.
         # true            — treat any skipped file as a hard failure: discard
         #                   the snapshot, do not rotate `latest`, and send an
         #                   error email. Use this only in regulated/compliance
