@@ -425,13 +425,12 @@ JustFolders surfaces that distinction explicitly:
 
 #### Why warnings are not failures by default
 
-Every mainstream backup tool — restic, borg, rsnapshot, BackupPC, Bacula —
-treats "some files could not be read" as a soft condition rather than a hard
-failure. The reasoning is straightforward: on any realistically sized
-filesystem, you will eventually hit a file you cannot read (permission, lock,
-transient I/O issue), and the alternative — discarding the entire snapshot
-because of one such file — means large filesystems silently fail to back up
-forever.
+The mainstream convention across backup tools is to treat "some files could
+not be read" as a soft condition rather than a hard failure. The reasoning is
+straightforward: on any realistically sized filesystem, you will eventually
+hit a file you cannot read (permission, lock, transient I/O issue), and the
+alternative — discarding the entire snapshot because of one such file —
+means large filesystems silently fail to back up forever.
 
 JustFolders follows the same convention: warnings produce a usable snapshot,
 and the user is told which files were skipped via the notification email so the
