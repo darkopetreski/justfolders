@@ -39,6 +39,15 @@ pub struct Config {
     pub policy: RetentionPolicy,
     /// Optional SMTP notification settings. `None` means notifications are disabled.
     pub notify: Option<SmtpConfig>,
+    /// Strict mode: treat partial transfers (rsync exit 23 / 24) as failures.
+    ///
+    /// When `false` (default), if some files are skipped — typically permission
+    /// denied on individual files — the snapshot is still created from what
+    /// was transferred and the run is reported as "completed with warnings".
+    ///
+    /// When `true`, any skipped file fails the entire backup: the snapshot is
+    /// discarded, no rotation happens, and an error notification is sent.
+    pub strict: bool,
 }
 
 /// TLS mode used when connecting to the SMTP server.
@@ -83,6 +92,12 @@ pub struct SmtpConfig {
     pub tls: SmtpTls,
     /// Send a notification even when the backup succeeds. Defaults to `false`.
     pub on_success: bool,
+    /// Send a notification when the backup completes with warnings (some files
+    /// were skipped but the snapshot was still created).  Defaults to `true`.
+    ///
+    /// Ignored when [`Config::strict`] is `true`, because warnings are then
+    /// escalated to errors and always notified.
+    pub on_warnings: bool,
 }
 
 impl SmtpConfig {
@@ -145,6 +160,14 @@ impl SmtpConfig {
             })?
             .unwrap_or(false);
 
+        let on_warnings = ini
+            .getbool("notify", "on_warnings")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "on_warnings".to_string(),
+                reason: e,
+            })?
+            .unwrap_or(true);
+
         Ok(Some(SmtpConfig {
             smtp_host,
             smtp_port,
@@ -154,6 +177,7 @@ impl SmtpConfig {
             to,
             tls,
             on_success,
+            on_warnings,
         }))
     }
 }
@@ -297,6 +321,14 @@ impl Config {
             })?
             .unwrap_or(false);
 
+        let strict = ini
+            .getbool("default", "strict")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "strict".to_string(),
+                reason: e,
+            })?
+            .unwrap_or(false);
+
         // A single-quote in any path that ends up inside a remote shell command
         // (SSH, rsync -e wrapper) breaks the quoting and enables shell injection.
         // Reject such paths at load time rather than silently misquoting them later.
@@ -327,6 +359,7 @@ impl Config {
             bwlimit,
             policy,
             notify,
+            strict,
         })
     }
 }
@@ -443,7 +476,25 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         #          --itemize-changes --times --recursive --perms --owner
         #          --group --stats --human-readable --delete
         rsync_flags = {rsync_flags}
-        
+
+        # Strict mode (optional, default: false).
+        #
+        # Controls what happens when rsync skips some files — typically because
+        # they could not be opened (permission denied), or because they vanished
+        # mid-transfer (live systems with rotating logs, cache files, etc.).
+        #
+        # false (default) — make the snapshot anyway from what was transferred.
+        #                   The run is reported as 'completed with warnings' and
+        #                   the skipped files are listed in the email (if
+        #                   [notify] is enabled). This is what every mainstream
+        #                   backup tool  does and  is the right choice for almost everyone.
+        # true            — treat any skipped file as a hard failure: discard
+        #                   the snapshot, do not rotate `latest`, and send an
+        #                   error email. Use this only in regulated/compliance
+        #                   setups where a partial backup is unacceptable and
+        #                   you would rather retry than keep an incomplete one.
+        # strict = false
+
         [policy]
         # Number of hourly snapshots to keep (0 = disabled)
         {keep_hourly}
@@ -475,6 +526,21 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         # to            = admin@example.com
         # tls           = starttls   # starttls (default) | tls | none
         # on_success    = false      # set to true to also notify on successful backups
+        #
+        # on_warnings: control email behavior when a backup completes with
+        # warnings — i.e. rsync skipped some files (typically permission denied
+        # on individual files, or files that vanished mid-transfer) but the rest
+        # were transferred and the snapshot was still created.
+        #
+        # true (default) — send an email listing the skipped files so you can
+        #                  investigate. The snapshot is still made.
+        # false          — make the snapshot, don't bother me. Useful when
+        #                  skipped files are expected (e.g. backing up a live
+        #                  system with always-changing cache files).
+        #
+        # Ignored when [default] strict = true — in that case warnings are
+        # already escalated to errors and always notified.
+        # on_warnings   = true
         ",
         src = params.src.original,
         dest = params.dest.original,

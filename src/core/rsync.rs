@@ -20,6 +20,24 @@ pub enum RsyncError {
     Backend(#[from] StorageBackendError),
 }
 
+/// Outcome of a successful (or partially successful) rsync invocation.
+///
+/// rsync's exit code carries severity information: code 0 means the entire
+/// transfer succeeded, while codes 23 and 24 mean some files were skipped
+/// (typically permission denied on individual files, or files that vanished
+/// mid-transfer) but the rest of the transfer completed normally.  Any other
+/// non-zero code is treated as a hard failure and produces [`RsyncError`].
+#[derive(Debug)]
+pub enum RsyncOutcome {
+    /// rsync exited with code 0 — every file was transferred.
+    Clean,
+    /// rsync exited with code 23 or 24 — some files were not transferred but
+    /// the rest of the run succeeded.  `code` is the actual rsync exit code
+    /// and `stderr` is the captured rsync stderr (already mirrored to the
+    /// terminal) so the caller can include it in a notification email.
+    Warnings { code: i32, stderr: String },
+}
+
 // ── Rsync ────────────────────────────────────────────────────────────────────
 
 /// A configured `rsync` process ready to execute.
@@ -43,12 +61,20 @@ impl Rsync {
     /// stderr is captured so error messages can be included in notifications,
     /// then immediately printed to the terminal so nothing is hidden.
     ///
+    /// # Returns
+    /// - [`RsyncOutcome::Clean`] — rsync exited cleanly (code 0).
+    /// - [`RsyncOutcome::Warnings`] — rsync exited with code 23 or 24, meaning
+    ///   some files were not transferred (typically permission denied on
+    ///   individual files, or files that vanished mid-transfer) but the rest
+    ///   of the transfer completed normally.
+    ///
     /// # Errors
-    /// - [`RsyncError::NonZeroStatus`] — rsync exited with a non-zero code.
-    ///   The captured stderr (e.g. "Permission denied (publickey)") is embedded
-    ///   in the error message and will appear in email notifications.
+    /// - [`RsyncError::NonZeroStatus`] — rsync exited with any other non-zero
+    ///   code (real protocol, I/O, or transport errors).  The captured stderr
+    ///   (e.g. "Permission denied (publickey)") is embedded in the error
+    ///   message and will appear in email notifications.
     /// - [`RsyncError::Io`] — failed to spawn the process.
-    pub fn run(&mut self) -> Result<(), RsyncError> {
+    pub fn run(&mut self) -> Result<RsyncOutcome, RsyncError> {
         // Pipe stderr so we can capture it; leave stdout inherited for live progress.
         // rsync error output is always a few lines — no risk of filling the pipe buffer
         // before we read it (we wait for the process first, then drain the pipe).
@@ -69,10 +95,20 @@ impl Rsync {
             eprintln!("{stderr}");
         }
 
-        if !status.success() {
-            return Err(RsyncError::NonZeroStatus { status, stderr });
+        // rsync exit codes 23 and 24 indicate a *partial* transfer:
+        //   23 — some files could not be transferred (e.g. permission denied on
+        //        individual files).  The rest of the transfer is intact.
+        //   24 — some source files vanished during the transfer (common on live
+        //        systems with rotating logs, cache files, etc.).
+        // These are reported as warnings rather than errors so the caller can
+        // choose, via the `strict` config flag, whether to still create the
+        // snapshot or to escalate them to a full failure.  Any other non-zero
+        // exit code is a real failure.
+        match status.code() {
+            Some(0) => Ok(RsyncOutcome::Clean),
+            Some(code @ (23 | 24)) => Ok(RsyncOutcome::Warnings { code, stderr }),
+            _ => Err(RsyncError::NonZeroStatus { status, stderr }),
         }
-        Ok(())
     }
 
     /// Constructs the rsync [`Command`] from `config` and `layout`.

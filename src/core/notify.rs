@@ -3,29 +3,60 @@ use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 
+/// Outcome of a backup run as far as the notification layer is concerned.
+///
+/// Maps onto three distinct email subjects: `Backup OK`, `Backup WARNING`,
+/// and `Backup FAILED`.
+pub enum NotifyState<'a> {
+    /// Clean run — every file transferred.
+    Success,
+    /// Partial run — some files were skipped but the snapshot was created.
+    /// `stderr` is the captured rsync stderr so the email can list which
+    /// files were skipped and why.
+    Warnings { stderr: &'a str },
+    /// Hard failure — the snapshot was not created.
+    Failed { detail: &'a str },
+}
+
 /// Sends a backup result notification via SMTP.
 ///
-/// Called after every backup run when `[notify]` is configured.
-/// On success, a notification is only sent when `config.on_success = true`.
-/// On failure, a notification is always sent.
+/// Called after every backup run when `[notify]` is configured.  The
+/// `on_success` and `on_warnings` flags in [`SmtpConfig`] decide whether
+/// the `Success` and `Warnings` states are actually delivered; the
+/// `Failed` state is always delivered.
 ///
 /// Errors from the SMTP send are printed to stderr but never propagate — a
 /// notification failure must not mask the original backup error.
-pub fn send_backup_result(cfg: &SmtpConfig, succeeded: bool, src: &str, detail: &str) {
-    if succeeded && !cfg.on_success {
-        return;
-    }
-
-    let subject = if succeeded {
-        format!("Backup OK: {src}")
-    } else {
-        format!("Backup FAILED: {src}")
-    };
-
-    let body = if succeeded {
-        format!("Backup of '{src}' completed successfully.\n")
-    } else {
-        format!("Backup of '{src}' failed with the following error:\n\n{detail}\n")
+pub fn send_backup_result(cfg: &SmtpConfig, state: NotifyState, src: &str) {
+    let (subject, body) = match state {
+        NotifyState::Success => {
+            if !cfg.on_success {
+                return;
+            }
+            (
+                format!("Backup OK: {src}"),
+                format!("Backup of '{src}' completed successfully.\n"),
+            )
+        }
+        NotifyState::Warnings { stderr } => {
+            if !cfg.on_warnings {
+                return;
+            }
+            (
+                format!("Backup WARNING: {src}"),
+                format!(
+                    "Backup of '{src}' completed with warnings — some files were not transferred \
+                     (typically permission denied on individual files, or files that vanished \
+                     mid-transfer). The snapshot was still created from the files that were \
+                     transferred.\n\n\
+                     Rsync output:\n\n{stderr}\n"
+                ),
+            )
+        }
+        NotifyState::Failed { detail } => (
+            format!("Backup FAILED: {src}"),
+            format!("Backup of '{src}' failed with the following error:\n\n{detail}\n"),
+        ),
     };
 
     if let Err(e) = send(cfg, &subject, &body) {

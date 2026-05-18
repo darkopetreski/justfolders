@@ -1,9 +1,9 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
-use crate::core::notify;
+use crate::core::notify::{self, NotifyState};
 use crate::core::parser::BackupArgs;
 use crate::core::retention::{apply_policy, print_snapshot_groups};
-use crate::core::rsync::{Rsync, RsyncError};
+use crate::core::rsync::{Rsync, RsyncError, RsyncOutcome};
 use crate::core::storage_backend::{StorageBackend, StorageBackendError};
 use thiserror::Error;
 
@@ -57,13 +57,30 @@ pub enum BackupError {
     ///   - local  → remote (push)
     #[error("both source and destination are remote; rsync requires at least one local side")]
     BothRemote,
+
+    /// rsync exited with code 23 or 24 (some files were not transferred) and
+    /// the user has set `strict = true`, so the partial transfer is treated
+    /// as a hard failure: the snapshot is discarded and no rotation happens.
+    #[error("rsync completed with a partial transfer (code {code}); strict mode is enabled so the snapshot was discarded\n{stderr}")]
+    PartialTransfer { code: i32, stderr: String },
+}
+
+/// Outcome of a successful backup run.
+///
+/// Distinguishes a clean run from one that completed with warnings (some
+/// files skipped) so the caller can pick the right notification.  A hard
+/// failure is reported via [`BackupError`] instead.
+enum BackupOutcome {
+    Clean,
+    Warnings { stderr: String },
 }
 
 /// Runs a full backup: loads the config, validates it, runs rsync, and finalizes the snapshot.
 ///
 /// If `[notify]` is configured, an email is sent after every run:
 /// - always on failure
-/// - on success only when `on_success = true`
+/// - on warnings when `on_warnings = true` (default)
+/// - on success when `on_success = true`
 pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     let config = Config::load(&args.config)?;
 
@@ -75,27 +92,51 @@ pub fn run(args: BackupArgs) -> Result<(), BackupError> {
     let outcome = do_backup(&config);
 
     if let Some(ref smtp) = config.notify {
-        match &outcome {
-            Ok(_) => notify::send_backup_result(smtp, true, &src, ""),
-            Err(e) => notify::send_backup_result(smtp, false, &src, &e.to_string()),
-        }
+        // Render the error to an owned String first so it can be borrowed by
+        // NotifyState::Failed for the duration of the send call.
+        let err_detail = outcome.as_ref().err().map(|e| e.to_string());
+        let state = match (&outcome, &err_detail) {
+            (Ok(BackupOutcome::Clean), _) => NotifyState::Success,
+            (Ok(BackupOutcome::Warnings { stderr }), _) => NotifyState::Warnings { stderr },
+            (Err(_), Some(detail)) => NotifyState::Failed { detail },
+            (Err(_), None) => unreachable!("err_detail is Some whenever outcome is Err"),
+        };
+        notify::send_backup_result(smtp, state, &src);
     }
 
-    outcome
+    outcome.map(|_| ())
 }
 
 /// Performs the actual backup steps: acquire lock → rsync → finalize → apply policy → print summary.
 ///
 /// Separated from [`run`] so the notification logic in `run` can wrap a single
 /// `Result` regardless of which step failed.
-fn do_backup(config: &Config) -> Result<(), BackupError> {
+///
+/// Returns [`BackupOutcome::Warnings`] when rsync reported a partial transfer
+/// (some files skipped) but [`Config::strict`] is `false` — in that case the
+/// snapshot is still created.  With `strict = true` the partial transfer is
+/// escalated to [`BackupError::PartialTransfer`] *before* the snapshot is
+/// promoted to `latest`, so the `.in_progress` directory is left on disk for
+/// inspection and `latest` is unchanged.
+fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
     let layout = BackupLayout::new(config);
     layout.prepare_log_dir()?;
 
     // Acquire lock before any I/O — released automatically when `_lock` is dropped.
     let _lock = BackupLock::acquire(layout.backend())?;
 
-    Rsync::new(config, &layout)?.run()?;
+    // Capture the rsync outcome so we can react to a partial transfer.  In
+    // strict mode any skipped file is fatal and we abort before promoting the
+    // in-progress directory to a real snapshot.
+    let warnings = match Rsync::new(config, &layout)?.run()? {
+        RsyncOutcome::Clean => None,
+        RsyncOutcome::Warnings { code, stderr } => {
+            if config.strict {
+                return Err(BackupError::PartialTransfer { code, stderr });
+            }
+            Some(stderr)
+        }
+    };
 
     layout.move_in_progress_to_latest()?;
 
@@ -116,15 +157,27 @@ fn do_backup(config: &Config) -> Result<(), BackupError> {
         layout.backend().delete_snapshot(name)?;
     }
 
-    println!(
-        "backup complete: {} → {}",
-        config.src.original,
-        layout.timestamp_arg()
-    );
+    if warnings.is_some() {
+        println!(
+            "backup completed with warnings: {} → {}",
+            config.src.original,
+            layout.timestamp_arg()
+        );
+        println!("some files were skipped — see rsync output above");
+    } else {
+        println!(
+            "backup complete: {} → {}",
+            config.src.original,
+            layout.timestamp_arg()
+        );
+    }
 
     let remaining = layout.backend().list_snapshots()?;
     println!();
     print_snapshot_groups(&config.policy, &remaining);
 
-    Ok(())
+    match warnings {
+        Some(stderr) => Ok(BackupOutcome::Warnings { stderr }),
+        None => Ok(BackupOutcome::Clean),
+    }
 }

@@ -19,6 +19,7 @@ fn make_local_config(dest: &str) -> Config {
         bwlimit: None,
         policy: RetentionPolicy::default(),
         notify: None,
+        strict: false,
     }
 }
 
