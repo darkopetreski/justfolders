@@ -42,11 +42,12 @@ JustFolders is a backup tool for creating folder snapshots without duplicating u
 Usage: justfolders <COMMAND>
 
 Commands:
-  backup     Run a backup job using the config file
-  snapshots  List all available snapshots at the destination
-  init       Generate a config file from provided arguments
-  verify     Verify the integrity of a snapshot …
-  help       Print this message or the help of the given subcommand(s)
+  backup       Run a backup job using the config file
+  snapshots    List all available snapshots at the destination
+  init         Generate a config file from provided arguments
+  verify       Verify the integrity of a snapshot …
+  test-notify  Send a test email using the [notify] SMTP settings
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help (see more with '--help')
@@ -150,6 +151,35 @@ Options:
 |--------|---------|
 | `--config <FILE>` | **Required.** Config that points at the same destination as your backups. |
 | `--snapshot <NAME>` | Which snapshot to check. Use the folder name `YYYY-MM-DD-HHMMSS`, or `latest` (default) to pick the lexicographically last timestamp in the listing. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+### `test-notify` — send a test email
+
+Loads the `[notify]` section from the config file and sends a single test
+email using those SMTP settings. Useful for two things:
+
+- Validating SMTP credentials right after you fill in `[notify]`, without
+  having to wait for a real backup failure to find out something is wrong.
+- Periodic health-checking from cron, so a silently broken SMTP setup (expired
+  password, revoked app token, provider change) is noticed before the next
+  backup actually needs to alert you.
+
+Unlike the post-backup notification path — which deliberately swallows SMTP
+errors so they cannot mask a real backup result — `test-notify` prints SMTP
+errors directly and exits with a non-zero status on failure. That makes it
+safe to use in monitoring pipelines.
+
+```text
+Usage: justfolders test-notify --config <FILE>
+
+Options:
+      --config <FILE>  Path to the config file
+  -h, --help           Print help
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <FILE>` | **Required.** Config file containing a `[notify]` section. If the section is missing the command fails with a clear error so you know notifications are not configured yet. |
 | `-h`, `--help` | Show help for this subcommand. |
 
 ### `init` — generate a new config file
@@ -387,6 +417,19 @@ Supported TLS modes:
 If the SMTP send fails (e.g. wrong credentials, unreachable server), a warning is
 printed to stderr and the backup exit code is unaffected — a notification failure
 never masks a backup error.
+
+**Test your SMTP setup with `test-notify`.** After filling in `[notify]`, send a
+one-off test email to verify everything works before relying on it:
+
+```bash
+justfolders test-notify --config backup.ini
+```
+
+The command exits `0` if the email was delivered to the SMTP server and non-zero
+otherwise, with the underlying SMTP error printed to stderr. This is also a good
+candidate for a weekly cron job — running `test-notify` periodically catches
+silently broken notifications (expired credentials, revoked app tokens, provider
+changes) *before* a real backup failure tries to use them.
 
 ### 6. Error handling and failure modes
 

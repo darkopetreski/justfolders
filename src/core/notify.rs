@@ -64,6 +64,21 @@ pub fn send_backup_result(cfg: &SmtpConfig, state: NotifyState, src: &str) {
     }
 }
 
+/// Sends a test email using the current SMTP settings.
+///
+/// Used by the `test-notify` CLI subcommand to verify that the `[notify]`
+/// section of the config is wired up correctly, without waiting for a real
+/// backup failure to find out.  Unlike [`send_backup_result`], errors are
+/// returned to the caller so the CLI can show them to the user and exit with
+/// a non-zero status.
+pub fn send_test_email(cfg: &SmtpConfig) -> Result<(), lettre::transport::smtp::Error> {
+    let subject = "JustFolders: SMTP test email";
+    let body = "This is a test email from JustFolders.\n\n\
+                If you received this message, your [notify] SMTP settings \
+                are working correctly and you will receive backup notifications.\n";
+    send(cfg, subject, body)
+}
+
 /// Sends a single email via SMTP using the settings in `cfg`.
 ///
 /// The `from` and `to` addresses were validated as parseable `Mailbox` values

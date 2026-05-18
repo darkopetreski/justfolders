@@ -45,6 +45,11 @@ pub enum Commands {
     /// the SHA256SUMS manifest generated at backup time.
     Verify(VerifyArgs),
 
+    /// Send a test email using the `[notify]` SMTP settings from the config file.
+    /// Useful for validating SMTP configuration without waiting for a real
+    /// backup failure, and for periodic health-checks from cron.
+    TestNotify(TestNotifyArgs),
+
     // TODO: Restore — restore a named snapshot (or `latest`) to a given target directory.
     //       Suggested flags: --snapshot <NAME|latest>, --dest <DIR>, --path <SUBPATH>
     //       (--path enables single-file / single-directory restore).
@@ -62,6 +67,14 @@ pub struct BackupArgs {
 #[derive(Parser, Debug)]
 #[command(arg_required_else_help = true)]
 pub struct SnapshotsArgs {
+    /// Path to the config file.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+}
+
+#[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct TestNotifyArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
     pub config: PathBuf,
