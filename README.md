@@ -620,6 +620,42 @@ Because snapshots are plain folders, you can also browse them in any file manage
 open files directly without any extraction step, or restore on a machine that has never
 had JustFolders installed. No special software is needed — ever.
 
+### Comparing two snapshots
+
+Every snapshot is a plain directory, so you can diff any two timestamps with standard
+tools. **rsync** is already required for backups and produces a clear, itemized report:
+
+```bash
+rsync -ani --delete \
+  /backups/2025-04-15-120000/ \
+  /backups/2025-04-16-093015/
+```
+
+| Flag | Meaning |
+|------|---------|
+| **`-n`** | **Dry run** — rsync prints what it *would* do but **does not modify anything** on either side. Safe to run on live snapshots. |
+| **`-i`** | Itemize each difference (e.g. `>f` = file newer or only on the right-hand path). |
+| **`--delete`** | Also list files that exist only in the first (older) snapshot — they would be removed on the second in a real sync. |
+
+The first path is the reference (source); the second is compared against it (destination).
+Swap the order to flip the viewpoint. Trailing slashes on both paths mean “directory
+contents,” consistent with how backups are laid out.
+
+For a minimal list of paths that differ:
+
+```bash
+diff -rq /backups/2025-04-15-120000 /backups/2025-04-16-093015
+```
+
+`diff -rq` is also read-only and makes no changes.
+
+**Hard links:** unchanged files across snapshots often share an inode; both tools compare
+*content*, so identical files usually produce no output even though the path appears in
+both trees.
+
+On a remote destination, run the same command on the backup server over SSH, or prefix
+both paths with `user@host:` and rsync’s `-e ssh` if you prefer one local invocation.
+
 ### 8. Pinning a snapshot forever
 
 The retention engine only considers directories whose name matches the
@@ -781,6 +817,34 @@ risk for files stored on that filesystem.
 On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
 Running [`justfolders verify`](#4-verify-a-snapshot) periodically re-checksums files
 against the manifest recorded at backup time and helps detect corruption early.
+
+**Compression at rest.** You do not need a proprietary backup format to save space on
+disk: enable transparent compression on the dataset or volume that holds your backup
+root. Applications (and JustFolders) still see normal files; the filesystem compresses
+blocks underneath. Hard-linked unchanged files continue to share storage, including
+compressed blocks.
+
+ZFS examples (on the dataset that contains your `dest` path):
+
+```bash
+zfs set compression=lz4 tank/backups    # low CPU, good default
+# or
+zfs set compression=zstd tank/backups   # better ratio, more CPU
+```
+
+On **btrfs**, use mount options such as `compress=zstd` or set the `compression`
+property on the subvolume.
+
+This is **compression at rest on the backup disk**, not over-the-wire compression (rsync
+already uses `--compress` for remote transfers). It applies only where that filesystem
+lives — a remote `ext4` destination does not gain ZFS compression unless the backups
+actually sit on ZFS (e.g. a ZFS pool on the backup server). It also does not reduce
+network traffic when a large file changes slightly: rsync still transfers the whole file;
+deduplicating archivers win there, while ZFS/btrfs win on stored size and transparency.
+
+For confidentiality on untrusted disks, **ZFS native encryption** (`encryption=on` on the
+dataset) or full-disk encryption (e.g. LUKS) on the backup volume are the usual complements
+to plain-folder snapshots — encryption at the block or volume layer, not inside each file.
 
 ## Pull vs push backups
 
