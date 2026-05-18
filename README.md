@@ -404,7 +404,16 @@ from          = justfolders@example.com
 to            = admin@example.com
 tls           = starttls   # starttls (default) | tls | none
 on_success    = false      # set to true to also notify on successful backups
+on_warnings   = true       # set to false to skip emails when rsync skipped some files but the snapshot was still created
 ```
+
+The notification flags control which outcomes produce an email:
+
+| Flag | Default | Behavior |
+|------|---------|----------|
+| (always on) | — | `Backup FAILED` is always sent and cannot be suppressed. |
+| `on_warnings` | `true` | Send `Backup WARNING` when some files were skipped (typically permission denied or vanished mid-transfer) but the snapshot was still created. Set to `false` if skipped files are expected on your system and the emails become noise. Ignored when `strict = true` — in that mode warnings are escalated to failures and always notified. |
+| `on_success`  | `false` | Send `Backup OK` on a clean run. Useful as a heartbeat for daily cron jobs to confirm the backup actually ran. |
 
 Supported TLS modes:
 
