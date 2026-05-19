@@ -140,7 +140,8 @@ fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
 
     layout.move_in_progress_to_latest()?;
 
-    println!("generating manifest... ");
+    println!("");
+    print!("generating manifest... ");
     layout.backend().generate_manifest(layout.timestamp())?;
     println!("done");
 
