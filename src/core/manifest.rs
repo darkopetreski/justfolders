@@ -1,7 +1,8 @@
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const MANIFEST_FILENAME: &str = "SHA256SUMS";
@@ -40,73 +41,104 @@ impl VerifyReport {
 
 /// Walks `snapshot_dir` recursively and writes a `SHA256SUMS` manifest file inside it.
 ///
-/// Files are sorted by path for deterministic output.
-/// On Unix, files that share an inode (hard-linked from a previous snapshot) are
-/// checksummed only once and the result is reused — this avoids re-reading large
-/// files that have not changed since the last snapshot.
+/// Output is byte-identical to the remote command
+/// `find -P . -type f ! -name 'SHA256SUMS' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum`:
+///
+/// - Symlinks are never followed (matches `find -P` + `-type f`).
+/// - Any file whose basename equals `SHA256SUMS` is excluded at every depth
+///   (matches `find -name SHA256SUMS`, not just the snapshot-root file).
+/// - Entries are sorted by raw path bytes (matches `LC_ALL=C sort -z`).
+/// - Each line is `<hex_hash>  ./<relative_path>\n`, written from the raw
+///   filesystem bytes so non-UTF-8 names round-trip exactly.
+///
+/// Hashing runs in parallel across the rayon thread pool, which is what makes
+/// this materially faster than a serial `sha256sum` on snapshots with many
+/// small files (the dominant cost is per-file open/read, not the hash itself).
 pub fn generate_local(snapshot_dir: &Path) -> io::Result<()> {
-    let mut entries: Vec<(String, String)> = Vec::new(); // (relative_path, hex_hash)
-    let mut seen: HashMap<u64, String> = HashMap::new();
+    let mut entries: Vec<(Vec<u8>, PathBuf)> = Vec::new(); // (rel_bytes, abs_path)
+    collect_files(snapshot_dir, snapshot_dir, &mut entries)?;
 
-    collect_files(snapshot_dir, snapshot_dir, &mut entries, &mut seen)?;
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    // Byte-wise sort matches `LC_ALL=C sort -z` on the remote.
+    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    // Hash in parallel; rayon preserves input order in the collected Vec.
+    let hashed: Vec<(Vec<u8>, String)> = entries
+        .into_par_iter()
+        .map(|(rel, abs)| compute_hash(&abs).map(|h| (rel, h)))
+        .collect::<io::Result<Vec<_>>>()?;
 
     let manifest_path = snapshot_dir.join(MANIFEST_FILENAME);
-    let mut out = File::create(&manifest_path)?;
-    for (rel_path, hash) in &entries {
-        writeln!(out, "{hash}  ./{rel_path}")?;
+    let mut out = BufWriter::new(File::create(&manifest_path)?);
+    for (rel, hash) in &hashed {
+        // sha256sum format: "<hex>  ./<rel>\n" (two spaces separator).
+        out.write_all(hash.as_bytes())?;
+        out.write_all(b"  ./")?;
+        out.write_all(rel)?;
+        out.write_all(b"\n")?;
     }
+    out.flush()?;
 
     Ok(())
 }
 
-/// Recursively walks `dir` and appends `(relative_path, sha256_hex)` pairs to `out`.
+/// Recursively walks `dir` and appends `(relative_path_bytes, absolute_path)`
+/// pairs to `out` for every regular file (symlinks and the `SHA256SUMS`
+/// manifest file are skipped).
 ///
-/// - `root` is the snapshot root used to compute relative paths; it stays fixed
-///   across the recursive calls while `dir` advances into sub-directories.
-/// - `seen` maps inode numbers to already-computed hashes so hard-linked files
-///   (shared with a previous snapshot via `--link-dest`) are checksummed only
-///   once.  On non-Unix platforms where inodes are unavailable every file is
-///   hashed independently.
-/// - Symlinks are skipped — they represent directory structure, not file content,
-///   and following them could cause the walk to escape the snapshot directory.
-/// - The `SHA256SUMS` manifest file itself is excluded so it does not contain
-///   a self-referential entry.
+/// `root` is the snapshot root used to compute relative paths; it stays fixed
+/// across the recursive calls while `dir` advances into sub-directories.
+///
+/// Relative paths are stored as raw bytes so the sort order and the manifest
+/// output match `find -print0 | LC_ALL=C sort -z` exactly even when filenames
+/// contain non-UTF-8 byte sequences.
 fn collect_files(
     root: &Path,
     dir: &Path,
-    out: &mut Vec<(String, String)>,
-    seen: &mut HashMap<u64, String>,
+    out: &mut Vec<(Vec<u8>, PathBuf)>,
 ) -> io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        let path = entry.path();
         let file_type = entry.file_type()?;
 
-        // Never follow symlinks — they are directory structure, not file content.
+        // Never follow symlinks — they are directory structure, not file content,
+        // and following them could cause the walk to escape the snapshot directory.
         if file_type.is_symlink() {
             continue;
         }
 
-        if file_type.is_dir() {
-            collect_files(root, &path, out, seen)?;
-        } else if file_type.is_file() {
-            let rel: PathBuf = path
-                .strip_prefix(root)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-                .to_path_buf();
-            let rel_str = rel.to_string_lossy().to_string();
+        let path = entry.path();
 
-            // The manifest must not include itself.
-            if rel_str == MANIFEST_FILENAME {
+        if file_type.is_dir() {
+            collect_files(root, &path, out)?;
+        } else if file_type.is_file() {
+            // Match `find -name 'SHA256SUMS'` semantics: exclude by basename
+            // at any depth, not just at the snapshot root.
+            if entry.file_name() == OsStr::new(MANIFEST_FILENAME) {
                 continue;
             }
 
-            let hash = hash_or_dedup(&path, seen)?;
-            out.push((rel_str, hash));
+            let rel = path
+                .strip_prefix(root)
+                .map_err(io::Error::other)?;
+            out.push((os_str_to_bytes(rel.as_os_str()), path));
         }
     }
     Ok(())
+}
+
+/// Returns the raw bytes of `s` on Unix (matching what `find` would emit) and
+/// a UTF-8 lossy fallback elsewhere (where this manifest format is not really
+/// meaningful anyway, since the remote command relies on Unix tools).
+fn os_str_to_bytes(s: &OsStr) -> Vec<u8> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        s.as_bytes().to_vec()
+    }
+    #[cfg(not(unix))]
+    {
+        s.to_string_lossy().into_owned().into_bytes()
+    }
 }
 
 // ── Manifest verification ─────────────────────────────────────────────────────
@@ -176,35 +208,6 @@ pub fn verify_local(snapshot_dir: &Path) -> io::Result<VerifyReport> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Returns the SHA-256 hex digest of `path`, reusing a cached result when the
-/// file shares an inode with a file already processed in this run (Unix only).
-fn hash_or_dedup(path: &Path, seen: &mut HashMap<u64, String>) -> io::Result<String> {
-    if let Some(ino) = inode_of(path) {
-        if let Some(cached) = seen.get(&ino) {
-            return Ok(cached.clone());
-        }
-        let hash = compute_hash(path)?;
-        seen.insert(ino, hash.clone());
-        Ok(hash)
-    } else {
-        compute_hash(path)
-    }
-}
-
-/// Returns the inode number of `path` on Unix; `None` on other platforms.
-fn inode_of(path: &Path) -> Option<u64> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        fs::metadata(path).ok().map(|m| m.ino())
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        None
-    }
-}
 
 /// Computes the SHA-256 hex digest of the file at `path`.
 fn compute_hash(path: &Path) -> io::Result<String> {

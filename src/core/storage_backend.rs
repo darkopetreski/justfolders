@@ -294,14 +294,19 @@ impl StorageBackend for RemoteBackend {
     ///
     /// Uses `find | sort | xargs sha256sum` so the output is deterministic
     /// regardless of filesystem directory ordering.
+    ///
+    /// `LC_ALL=C` forces byte-wise sort collation. Without it the remote
+    /// shell's locale (commonly `en_US.UTF-8` or `C.UTF-8`) would apply
+    /// Unicode collation and produce manifests with a different line order
+    /// than the local generator, which always sorts by raw bytes.
     fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
         validate_snapshot_name(snapshot_name)?;
         let path = format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name);
         // -P: never follow symlinks; without it a symlink loop on the remote
         // could cause find to walk outside the snapshot directory.
         let cmd = format!(
-            "cd '{path}' && find -P . -type f ! -name '{mf}' -print0 \
-             | sort -z | xargs -0 sha256sum > '{mf}'",
+            "cd '{path}' && LC_ALL=C find -P . -type f ! -name '{mf}' -print0 \
+             | LC_ALL=C sort -z | xargs -0 sha256sum > '{mf}'",
             mf = manifest::MANIFEST_FILENAME,
         );
         let output = self.ssh_command().arg(&cmd).output()?;
