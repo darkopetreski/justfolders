@@ -41,10 +41,6 @@ pub enum Commands {
     /// Generate a config file from provided arguments.
     Init(InitArgs),
 
-    /// Verify the integrity of a snapshot by re-checksumming all files against
-    /// the SHA256SUMS manifest generated at backup time.
-    Verify(VerifyArgs),
-
     /// Send a test email using the `[notify]` SMTP settings from the config file.
     /// Useful for validating SMTP configuration without waiting for a real
     /// backup failure, and for periodic health-checks from cron.
@@ -78,19 +74,6 @@ pub struct TestNotifyArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
     pub config: PathBuf,
-}
-
-#[derive(Parser, Debug)]
-#[command(arg_required_else_help = true)]
-pub struct VerifyArgs {
-    /// Path to the config file.
-    #[arg(long = "config", value_name = "FILE", required = true)]
-    pub config: PathBuf,
-
-    /// Name of the snapshot to verify. Defaults to the most recent snapshot.
-    /// Use the exact timestamp name (e.g. 2025-04-15-120000) or 'latest'.
-    #[arg(long = "snapshot", value_name = "NAME", default_value = "latest")]
-    pub snapshot: String,
 }
 
 #[derive(Parser, Debug)]

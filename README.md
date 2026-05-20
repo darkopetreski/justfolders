@@ -14,7 +14,13 @@ Just folders.
 
 ## Status
 
-Early release. The CLI and config format may change before 1.0. Always verify your backups.
+Early release. The CLI and config format may change before 1.0. Always test your backups by performing a real restore from time to time.
+
+## Supported platforms
+
+JustFolders currently runs on **Linux only**. Other Unix-like systems may work but are not tested or supported.
+
+The destination side (local or remote over SSH) is also expected to be Linux.
 
 ## Requirements
 
@@ -22,9 +28,8 @@ Early release. The CLI and config format may change before 1.0. Always verify yo
 |---|---|---|
 | `rsync` | local machine (the machine running justfolders) | Used for all transfers. Any modern version works. |
 | `ssh` | local machine | Required for remote sources or destinations. |
-| `sha256sum` | **remote server** (only when destination is remote) | Used to generate and verify snapshot manifests. Part of GNU coreutils — present on all standard Linux distributions. Not needed for local-only backups. |
 
-All three are standard tools available by default on any Linux system. macOS ships `ssh` and `rsync` but not `sha256sum` — use `brew install coreutils` if running justfolders on macOS against a remote destination.
+Both are standard tools available by default on any Linux system.
 
 ## Command-line reference
 
@@ -49,7 +54,6 @@ Commands:
   backup       Run a backup job using the config file
   snapshots    List all available snapshots at the destination
   init         Generate a config file from provided arguments
-  verify       Verify the integrity of a snapshot …
   test-notify  Send a test email using the [notify] SMTP settings
   help         Print this message or the help of the given subcommand(s)
 
@@ -66,8 +70,8 @@ Options:
 ### `backup` — run a backup
 
 Reads `[default]` and `[policy]` from the config file, acquires the destination lock,
-runs rsync into `tmp/`, promotes the snapshot, generates `SHA256SUMS`, applies the
-retention policy, and prints a grouped summary of remaining snapshots.
+runs rsync into `tmp/`, promotes the snapshot, applies the retention policy, and
+prints a grouped summary of remaining snapshots.
 
 ```text
 Usage: justfolders backup --config <FILE>
@@ -135,27 +139,6 @@ Yearly
 
 Total: 11 snapshots
 ```
-
-### `verify` — checksum a snapshot against its manifest
-
-Re-reads every file listed in `SHA256SUMS` inside the snapshot and compares hashes.
-Exits `0` if clean, `1` if any mismatch or missing file — suitable for cron and
-monitoring.
-
-```text
-Usage: justfolders verify [OPTIONS] --config <FILE>
-
-Options:
-      --config <FILE>    Path to the config file
-      --snapshot <NAME>  Snapshot to verify [default: latest]
-  -h, --help             Print help
-```
-
-| Option | Meaning |
-|--------|---------|
-| `--config <FILE>` | **Required.** Config that points at the same destination as your backups. |
-| `--snapshot <NAME>` | Which snapshot to check. Use the folder name `YYYY-MM-DD-HHMMSS`, or `latest` (default) to pick the lexicographically last timestamp in the listing. |
-| `-h`, `--help` | Show help for this subcommand. |
 
 ### `test-notify` — send a test email
 
@@ -287,7 +270,7 @@ No manual intervention is needed.
 ## Retention policy
 
 Snapshot names are always `YYYY-MM-DD-HHMMSS`. The retention engine only **deletes**
-directories that match that pattern; anything you rename (see [Pinning a snapshot forever](#8-pinning-a-snapshot-forever)) is ignored forever.
+directories that match that pattern; anything you rename (see [Pinning a snapshot forever](#7-pinning-a-snapshot-forever)) is ignored forever.
 
 Configuration lives in the **`[policy]`** section of your `.ini` file:
 
@@ -362,7 +345,7 @@ may be deleted. Tightening policy can remove a lot of history in one go — plan
 **pin** important folders before changing numbers.
 
 **What retention never touches**  
-`tmp/`, `latest`, `backup.lock/`, `.logs/`, `SHA256SUMS`, and any directory whose name is
+`tmp/`, `latest`, `backup.lock/`, `.logs/`, and any directory whose name is
 **not** exactly `YYYY-MM-DD-HHMMSS` are not subject to this algorithm.
 
 For the full design notes (including why `keep_within_days` is a post-process), see the
@@ -374,23 +357,7 @@ module documentation in `src/core/retention.rs` in the repository.
 justfolders snapshots --config backup.ini
 ```
 
-### 4. Verify a snapshot
-
-Re-checksums every file in a snapshot against the manifest recorded at backup time.
-Use this to confirm a snapshot is safe to restore from before you actually need it.
-
-```bash
-# Verify the most recent snapshot
-justfolders verify --config backup.ini
-
-# Verify a specific snapshot
-justfolders verify --config backup.ini --snapshot 2025-04-15-120000
-```
-
-Exits with code 0 if the snapshot is clean, code 1 if any file fails — safe to use
-in scripts and monitoring pipelines.
-
-### 5. Email notifications
+### 4. Email notifications
 
 justfolders can send an email after every backup run — always on failure,
 optionally on success. Credentials live in the config file only and are never
@@ -432,7 +399,7 @@ printed to stderr and the backup exit code is unaffected — a notification fail
 never masks a backup error.
 
 **Test your SMTP setup with `test-notify`.** After filling in `[notify]`, send a
-one-off test email to verify everything works before relying on it:
+one-off test email to confirm everything works before relying on it:
 
 ```bash
 justfolders test-notify --config backup.ini
@@ -444,7 +411,7 @@ candidate for a weekly cron job — running `test-notify` periodically catches
 silently broken notifications (expired credentials, revoked app tokens, provider
 changes) *before* a real backup failure tries to use them.
 
-### 6. Error handling and failure modes
+### 5. Error handling and failure modes
 
 Backups touch a lot of files, and a long-running transfer can hit edge cases that
 are not really "the backup failed" — a single file you cannot read, a temp file
@@ -473,12 +440,11 @@ JustFolders surfaces that distinction explicitly:
   email so you can tell which case it is — `23` ("partial transfer due to
   error") vs `24` ("vanished source files").
 - **Failed** — anything else: SSH could not connect, the destination ran out of
-  disk, rsync crashed, the lock could not be acquired, the manifest step
-  failed, etc. The `tmp/` directory (where rsync stages the in-progress
-  transfer) is left on disk for inspection but is **not** promoted to a real
-  snapshot, and `latest` is **not** changed. The
-  backup chain is unaffected — the previous `latest` snapshot is still your
-  most recent good backup.
+  disk, rsync crashed, the lock could not be acquired, etc. The `tmp/`
+  directory (where rsync stages the in-progress transfer) is left on disk for
+  inspection but is **not** promoted to a real snapshot, and `latest` is **not**
+  changed. The backup chain is unaffected — the previous `latest` snapshot is
+  still your most recent good backup.
 
 #### Why warnings are not failures by default
 
@@ -510,7 +476,7 @@ The notification rules are simple:
 - `Backup OK` is sent when `on_success = true` (default off — useful for daily
   "yes, the backup ran" peace-of-mind emails).
 
-See [Email notifications](#5-email-notifications) for how to fill in the
+See [Email notifications](#4-email-notifications) for how to fill in the
 `[notify]` section.
 
 #### Strict mode — failing on any skipped file
@@ -588,7 +554,7 @@ In order of usefulness:
    Safe to delete (`rm -rf <dest>/tmp`) once you no longer need it. A
    successful next run will simply create it again.
 
-### 7. Restore
+### 6. Restore
 
 There is no restore command — and there does not need to be one.
 
@@ -656,7 +622,7 @@ both trees.
 On a remote destination, run the same command on the backup server over SSH, or prefix
 both paths with `user@host:` and rsync’s `-e ssh` if you prefer one local invocation.
 
-### 8. Pinning a snapshot forever
+### 7. Pinning a snapshot forever
 
 The retention engine only considers directories whose name matches the
 `YYYY-MM-DD-HHMMSS` format. **Renaming a snapshot to anything else makes it
@@ -685,7 +651,7 @@ original timestamp:
 mv /backups/before-migration /backups/2025-04-15-120000
 ```
 
-### 9. Creating a self-contained archive
+### 8. Creating a self-contained archive
 
 A snapshot is a directory of hard-linked files — the files are space-efficient on
 disk but share underlying data with other snapshots. Running `tar` on a snapshot
@@ -737,9 +703,8 @@ bytes anew, so the archive’s payload is **not** tied to those original inodes.
 Store the archive on **different media** (another disk, removable drive, or
 offsite object storage) and you materially **improve resilience** to media
 degradation and localized corruption for that frozen point in time—while
-accepting that the archive medium must itself be monitored and verified over its
-lifetime. This complements, rather than replaces, [`verify`](#4-verify-a-snapshot)
-on live snapshots. For the underlying tradeoff, see
+accepting that the archive medium must itself be monitored over its lifetime.
+For the underlying tradeoff, see
 [The hard-link and bit-rot tradeoff](#the-hard-link-and-bit-rot-tradeoff).
 
 ## Storage efficiency and data safety
@@ -815,8 +780,9 @@ redundancy, repair) silent corruption automatically. This largely eliminates the
 risk for files stored on that filesystem.
 
 On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
-Running [`justfolders verify`](#4-verify-a-snapshot) periodically re-checksums files
-against the manifest recorded at backup time and helps detect corruption early.
+JustFolders does not currently include a built-in scrub command; if bit-rot detection
+matters for your use case, run backups against ZFS or btrfs with checksumming enabled,
+or layer in an external integrity check that suits your workflow.
 
 **Compression at rest.** You do not need a proprietary backup format to save space on
 disk: enable transparent compression on the dataset or volume that holds your backup
@@ -1047,6 +1013,6 @@ The author is not responsible for any data loss, corruption, or damage that may 
 This tool is intended for experimental and personal use. It has not been thoroughly tested for all scenarios.
 
 DO NOT rely on this software as your only backup solution.
-Always verify your backups and test restore procedures regularly.
+Always test your backups and restore procedures regularly.
 
 Use at your own risk.

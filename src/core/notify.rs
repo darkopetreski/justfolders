@@ -66,7 +66,7 @@ pub fn send_backup_result(cfg: &SmtpConfig, state: NotifyState, src: &str) {
 
 /// Sends a test email using the current SMTP settings.
 ///
-/// Used by the `test-notify` CLI subcommand to verify that the `[notify]`
+/// Used by the `test-notify` CLI subcommand to check that the `[notify]`
 /// section of the config is wired up correctly, without waiting for a real
 /// backup failure to find out.  Unlike [`send_backup_result`], errors are
 /// returned to the caller so the CLI can show them to the user and exit with

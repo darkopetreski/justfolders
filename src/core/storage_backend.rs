@@ -1,5 +1,4 @@
 use crate::core::location::LocationKind;
-use crate::core::manifest::{self, VerifyReport};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -10,9 +9,6 @@ const LOCK_NAME: &str = "backup.lock";
 /// Errors from destination-side storage operations (local filesystem or SSH).
 #[derive(Debug, Error)]
 pub enum StorageBackendError {
-    #[error("snapshot directory not found: {0}")]
-    MissingSnapshot(String),
-
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -85,19 +81,6 @@ pub trait StorageBackend {
     /// Called automatically by the RAII `BackupLock` guard; safe to call even if the
     /// lock directory has already been removed.
     fn release_lock(&self) -> Result<(), StorageBackendError>;
-
-    /// Generates a `SHA256SUMS` manifest file inside the given snapshot directory.
-    ///
-    /// Called automatically at the end of every successful backup run. The manifest
-    /// is the input for [`verify_snapshot`] and enables offline bit-rot detection.
-    fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError>;
-
-    /// Verifies a snapshot by re-checksumming every file against its `SHA256SUMS` manifest.
-    ///
-    /// Returns a [`VerifyReport`] listing any mismatches or missing files.
-    /// Returns [`StorageBackendError::MissingSnapshot`] if no manifest exists in the snapshot
-    /// (e.g. the snapshot was created before manifest generation was introduced).
-    fn verify_snapshot(&self, snapshot_name: &str) -> Result<VerifyReport, StorageBackendError>;
 }
 
 /// [`StorageBackend`] implementation for a local filesystem destination.
@@ -289,84 +272,6 @@ impl StorageBackend for RemoteBackend {
         }
         Ok(())
     }
-
-    /// Generates a `SHA256SUMS` manifest on the remote host via SSH.
-    ///
-    /// Uses `find | sort | xargs sha256sum` so the output is deterministic
-    /// regardless of filesystem directory ordering.
-    ///
-    /// `LC_ALL=C` forces byte-wise sort collation. Without it the remote
-    /// shell's locale (commonly `en_US.UTF-8` or `C.UTF-8`) would apply
-    /// Unicode collation and produce manifests with a different line order
-    /// than the local generator, which always sorts by raw bytes.
-    fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        validate_snapshot_name(snapshot_name)?;
-        let path = format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name);
-        // -P: never follow symlinks; without it a symlink loop on the remote
-        // could cause find to walk outside the snapshot directory.
-        let cmd = format!(
-            "cd '{path}' && LC_ALL=C find -P . -type f ! -name '{mf}' -print0 \
-             | LC_ALL=C sort -z | xargs -0 sha256sum > '{mf}'",
-            mf = manifest::MANIFEST_FILENAME,
-        );
-        let output = self.ssh_command().arg(&cmd).output()?;
-        if !output.status.success() {
-            return Err(StorageBackendError::Ssh(format!(
-                "failed to generate manifest for snapshot '{snapshot_name}': {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        Ok(())
-    }
-
-    /// Verifies the remote snapshot by running `sha256sum --check` on the remote host.
-    ///
-    /// Parses the output to build a [`VerifyReport`] without transferring any file data.
-    fn verify_snapshot(&self, snapshot_name: &str) -> Result<VerifyReport, StorageBackendError> {
-        validate_snapshot_name(snapshot_name)?;
-        let path = format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name);
-
-        // Check the manifest exists before attempting verification.
-        let check = format!(
-            "test -f '{}/{}'",
-            path,
-            manifest::MANIFEST_FILENAME
-        );
-        if !self.ssh_command().arg(&check).status()?.success() {
-            return Err(StorageBackendError::MissingSnapshot(format!(
-                "no manifest found in snapshot '{snapshot_name}'; \
-                 run a new backup to generate one"
-            )));
-        }
-
-        let cmd = format!(
-            "cd '{path}' && sha256sum --check '{mf}' 2>/dev/null",
-            mf = manifest::MANIFEST_FILENAME,
-        );
-        let output = self.ssh_command().arg(&cmd).output()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        let mut ok_count = 0usize;
-        let mut failures = Vec::new();
-
-        for line in stdout.lines() {
-            if line.ends_with(": OK") {
-                ok_count += 1;
-            } else if line.ends_with(": FAILED") {
-                let p = line.trim_end_matches(": FAILED").to_string();
-                failures.push(crate::core::manifest::VerifyFailure::ChecksumMismatch {
-                    path: p,
-                    expected: String::new(),
-                    actual: String::new(),
-                });
-            } else if line.ends_with(": FAILED open or read") {
-                let p = line.trim_end_matches(": FAILED open or read").to_string();
-                failures.push(crate::core::manifest::VerifyFailure::Missing { path: p });
-            }
-        }
-
-        Ok(VerifyReport { ok_count, failures })
-    }
 }
 
 /// Returns `true` if the process with the given PID is still running.
@@ -495,34 +400,5 @@ impl StorageBackend for LocalBackend {
             std::fs::remove_dir_all(&lock)?;
         }
         Ok(())
-    }
-
-    /// Generates a `SHA256SUMS` manifest inside the local snapshot directory.
-    fn generate_manifest(&self, snapshot_name: &str) -> Result<(), StorageBackendError> {
-        validate_snapshot_name(snapshot_name)?;
-        let dir = self.path.join(snapshot_name);
-        if !dir.starts_with(&self.path) {
-            return Err(StorageBackendError::InvalidSnapshotName(snapshot_name.to_string()));
-        }
-        manifest::generate_local(&dir)?;
-        Ok(())
-    }
-
-    /// Verifies the local snapshot by re-checksumming against its manifest.
-    fn verify_snapshot(&self, snapshot_name: &str) -> Result<VerifyReport, StorageBackendError> {
-        validate_snapshot_name(snapshot_name)?;
-        let dir = self.path.join(snapshot_name);
-        if !dir.starts_with(&self.path) {
-            return Err(StorageBackendError::InvalidSnapshotName(snapshot_name.to_string()));
-        }
-        let manifest_path = dir.join(manifest::MANIFEST_FILENAME);
-        if !manifest_path.exists() {
-            return Err(StorageBackendError::MissingSnapshot(format!(
-                "no manifest found in snapshot '{snapshot_name}'; \
-                 run a new backup to generate one"
-            )));
-        }
-        let report = manifest::verify_local(&dir)?;
-        Ok(report)
     }
 }
