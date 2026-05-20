@@ -660,6 +660,12 @@ The result is a **fully self-contained, independent copy** of that exact point i
 time — no dependency on any other snapshot, safe to move to cold storage, an
 external drive, or a cloud bucket.
 
+JustFolders does not include an `archive` command — only `backup`, `snapshots`,
+`init`, and `test-notify` (see [Command-line reference](#command-line-reference)). To freeze a snapshot for
+long-term storage you create a normal compressed tarball yourself with `tar`, as
+below. The archive lives beside your snapshots (for example under `archives/`);
+retention ignores it because the filename is not a snapshot timestamp.
+
 ```bash
 # Local — create a compressed archive in an archives folder
 mkdir -p /backups/archives
@@ -679,15 +685,31 @@ ssh my-backup-server \
     > /local/archives/snapshot-2025-04-15.tar.gz
 ```
 
-Because the archive filename does not match `YYYY-MM-DD-HHMMSS`, it is invisible
-to the retention engine and will never be automatically deleted — just like a
-pinned folder.
-
 To extract the archive when you need it:
 
 ```bash
 tar -xzf snapshot-2025-04-15.tar.gz
 ```
+
+**Checksum the archive file.** After you create the `.tar.gz`, record a digest of
+the **archive file itself** (not of each file inside it). Store the checksum
+alongside the archive or in a separate safe place. Later, before you trust or
+extract the tarball, recompute and compare — a mismatch means the file was
+altered or damaged in transit or on storage.
+
+```bash
+# Write checksum (example path matches the local create command above)
+md5sum /backups/archives/snapshot-2025-04-15.tar.gz \
+    > /backups/archives/snapshot-2025-04-15.tar.gz.md5
+
+# Verify later — prints OK or FAILED
+md5sum -c /backups/archives/snapshot-2025-04-15.tar.gz.md5
+```
+
+`sha256sum` works the same way if you prefer a stronger hash (`sha256sum file >
+file.sha256`, then `sha256sum -c file.sha256`). These tools are standard on Linux
+and macOS; use the same command when you copy the archive to another host so the
+checksum still matches the bytes you actually stored.
 
 > **Note on size:** Because `tar` stores each file independently, the archive
 > will be larger than the snapshot's apparent on-disk usage (which benefits from
@@ -704,7 +726,8 @@ Store the archive on **different media** (another disk, removable drive, or
 offsite object storage) and you materially **improve resilience** to media
 degradation and localized corruption for that frozen point in time—while
 accepting that the archive medium must itself be monitored over its lifetime.
-For the underlying tradeoff, see
+Pairing the archive with a stored checksum (above) gives you a simple periodic
+check that the tarball bytes are still intact. For the underlying tradeoff, see
 [The hard-link and bit-rot tradeoff](#the-hard-link-and-bit-rot-tradeoff).
 
 ## Storage efficiency and data safety
@@ -749,7 +772,9 @@ primary backup volume does not automatically invalidate bytes already written in
 an archive you stored **elsewhere**. Used together with offsite or secondary media,
 that improves your odds of recovering a known-good state when the live snapshot
 tree is no longer trustworthy. It is not a substitute for diverse backups and
-periodic verification; it is an additional layer for milestones you care about most.
+periodic verification (for example `md5sum -c` on stored archives — see
+[Creating a self-contained archive](#8-creating-a-self-contained-archive)); it is
+an additional layer for milestones you care about most.
 
 ### The 3-2-1 rule
 
@@ -782,7 +807,9 @@ risk for files stored on that filesystem.
 On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
 JustFolders does not currently include a built-in scrub command; if bit-rot detection
 matters for your use case, run backups against ZFS or btrfs with checksumming enabled,
-or layer in an external integrity check that suits your workflow.
+or layer in an external integrity check that suits your workflow (for milestone
+`.tar.gz` copies, checksum the archive file as in
+[Creating a self-contained archive](#8-creating-a-self-contained-archive)).
 
 **Compression at rest.** You do not need a proprietary backup format to save space on
 disk: enable transparent compression on the dataset or volume that holds your backup
