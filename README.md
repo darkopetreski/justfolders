@@ -742,7 +742,7 @@ This means:
 
 **Self-contained archives.** A practical way to obtain such a copy for a *specific*
 point in time—without giving up space-efficient snapshots for routine retention—is
-described in [Creating a self-contained archive](#9-creating-a-self-contained-archive).
+described in [Creating a self-contained archive](#8-creating-a-self-contained-archive).
 Because archiving **materializes** each file’s data into a new artifact (hard links
 are not preserved as shared storage inside the archive), corruption of blocks on the
 primary backup volume does not automatically invalidate bytes already written into
