@@ -1,7 +1,9 @@
 use crate::core::backup_layout::BackupLayout;
 use crate::core::config::Config;
 use crate::core::storage_backend::StorageBackendError;
-use std::io::{self, Read};
+use std::fs::OpenOptions;
+use std::io::{self, Read, Write};
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use thiserror::Error;
 
@@ -45,6 +47,13 @@ pub enum RsyncOutcome {
 /// Construct with [`Rsync::new`], then call [`Rsync::run`] to execute the transfer.
 pub struct Rsync {
     cmd: Command,
+    /// Path of the `--log-file` rsync was told to write, if logging is enabled.
+    /// Captured here so [`run`] can append the captured stderr to the same file
+    /// after rsync exits — rsync's own log does not include stderr messages
+    /// (especially those forwarded from the remote sender over SSH), so without
+    /// this the log file would be missing things like "permission denied" that
+    /// the user sees on the terminal.
+    log_path: Option<PathBuf>,
 }
 
 impl Rsync {
@@ -52,6 +61,7 @@ impl Rsync {
     pub fn new(config: &Config, layout: &BackupLayout) -> Result<Self, RsyncError> {
         Ok(Self {
             cmd: Self::build_cmd(config, layout)?,
+            log_path: layout.log_path(),
         })
     }
 
@@ -93,6 +103,30 @@ impl Rsync {
         // Always mirror stderr to the terminal so the user sees the same output as before.
         if !stderr.is_empty() {
             eprintln!("{stderr}");
+        }
+
+        // Append stderr to the rsync log file as well.
+        //
+        // rsync's `--log-file` only records what the local rsync process itself
+        // logs.  Messages written directly to stderr — most notably
+        // "permission denied" / "failed to open" errors that come from the
+        // *remote* sender and are forwarded over SSH — never reach rsync's own
+        // logger, so they end up on the user's terminal but are missing from
+        // the log file.  Appending the captured stderr here keeps the log file
+        // in sync with what the user actually saw.
+        //
+        // Failure to write to the log is intentionally non-fatal: the transfer
+        // itself succeeded (or failed) on its own merits and we don't want a
+        // log I/O hiccup to mask that outcome.
+        if !stderr.is_empty() {
+            if let Some(ref log_path) = self.log_path {
+                if let Err(e) = append_stderr_to_log(log_path, &stderr) {
+                    eprintln!(
+                        "warning: failed to append rsync stderr to {}: {e}",
+                        log_path.display()
+                    );
+                }
+            }
         }
 
         // rsync exit codes 23 and 24 indicate a *partial* transfer:
@@ -174,4 +208,19 @@ impl Rsync {
 
         Ok(cmd)
     }
+}
+
+/// Appends rsync's captured stderr to the log file rsync was told to write.
+///
+/// A short header marks the section so the stderr block is easy to spot when
+/// scanning the log.  The file is opened in append mode and created if rsync
+/// produced stderr without producing any log output of its own (e.g. when
+/// rsync failed before opening its log file).
+fn append_stderr_to_log(log_path: &PathBuf, stderr: &str) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
+    writeln!(file, "\n--- rsync stderr ---\n{stderr}")?;
+    Ok(())
 }
