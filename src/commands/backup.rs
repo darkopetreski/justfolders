@@ -150,6 +150,7 @@ fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
     to_delete.retain(|name| name != layout.timestamp());
 
     for name in &to_delete {
+        println!("expiring snapshot {name}");
         layout.backend().delete_snapshot(name)?;
     }
 
