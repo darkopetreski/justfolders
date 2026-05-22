@@ -519,9 +519,10 @@ impl StorageBackend for RemoteBackend {
         self.read_remote_file_optional(&file_path)
     }
 
-    /// Runs `cd '<snap>' && sha256sum -c sha256sum` on the remote host.
-    /// stdout/stderr stream live over SSH so the user sees the same
-    /// `<file>: OK` / `<file>: FAILED` lines they would see locally.
+    /// Runs `cd '<snap>' && sha256sum -c --quiet sha256sum` on the remote
+    /// host.  stdout/stderr stream live over SSH so the user sees any
+    /// `<file>: FAILED` lines as they appear; `--quiet` suppresses the
+    /// per-file `OK` chatter so the local view matches the local backend.
     ///
     /// Existence of the per-snapshot file is probed first so we can return
     /// [`VerifyOutcome::NoChecksumFile`] cleanly rather than relying on the
@@ -549,7 +550,7 @@ impl StorageBackend for RemoteBackend {
             }
         }
 
-        let cmd = format!("cd '{snap_path}' && sha256sum -c {SNAPSHOT_SHA256_NAME}");
+        let cmd = format!("cd '{snap_path}' && sha256sum -c --quiet {SNAPSHOT_SHA256_NAME}");
         let status = self.ssh_command().arg(&cmd).status()?;
         decode_sha256sum_check_status(status.code())
     }
@@ -871,9 +872,11 @@ impl StorageBackend for LocalBackend {
         }
     }
 
-    /// Runs `sha256sum -c sha256sum` inside the snapshot directory.  stdout
-    /// and stderr are inherited from the current process so per-file lines
-    /// appear live; only the final verdict is captured in the return value.
+    /// Runs `sha256sum -c --quiet sha256sum` inside the snapshot directory.
+    /// stdout/stderr are inherited from the current process so any per-file
+    /// `FAILED` lines stream live; `--quiet` suppresses the noisy `OK`
+    /// lines so the user sees output only when something is actually wrong.
+    /// The final verdict is captured in the return value.
     fn verify_snapshot(
         &self,
         snapshot_name: &str,
@@ -886,6 +889,7 @@ impl StorageBackend for LocalBackend {
 
         let status = Command::new("sha256sum")
             .arg("-c")
+            .arg("--quiet")
             .arg(SNAPSHOT_SHA256_NAME)
             .current_dir(&snap_root)
             .status()?;
