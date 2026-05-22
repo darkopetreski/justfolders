@@ -351,60 +351,180 @@ impl StorageBackend for RemoteBackend {
 
     // ── Checksum / verification I/O ──────────────────────────────────────────
     //
-    // Stubbed for now — the real SSH-driven implementations land in step 4 of
-    // the checksum rollout.  Until then any backup against a remote
-    // destination silently *skips* the checksum step (orchestration layer
-    // logs a warning), so the only visible effect is the absence of the
-    // `sha256sum` file inside remote snapshots.
+    // All operations run on the **remote** host over SSH:
+    //   * Listing & hashing → `find` / `xargs sha256sum` on the remote.
+    //   * Reading & writing artifacts → `cat` / shell redirection over SSH.
+    //
+    // Single-quoting around paths is safe because `RemoteBackend.path` was
+    // validated at config-load time to not contain a single quote, and
+    // `snapshot_name` is always checked by [`validate_snapshot_name`] before
+    // any command is built.
 
+    /// Runs `find -type f -printf '%i %P\0'` on the remote and parses the
+    /// returned NUL-stream — identical record format to the local backend so
+    /// the same parser handles both.
     fn list_files_with_inodes(
         &self,
-        _snapshot_name: &str,
+        snapshot_name: &str,
     ) -> Result<Vec<(u64, String)>, StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+        validate_snapshot_name(snapshot_name)?;
+        let snap_path = self.snapshot_path(snapshot_name);
+
+        // The `\0` inside the single-quoted shell argument reaches `find`
+        // literally; `find` then emits real NUL bytes between records.
+        let cmd = format!("find '{snap_path}' -type f -printf '%i %P\\0'");
+        let output = self.ssh_command().arg(&cmd).output()?;
+
+        if !output.status.success() {
+            return Err(StorageBackendError::Ssh(format!(
+                "remote find failed for {snap_path}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+
+        parse_find_inodes(&output.stdout)
     }
 
+    /// Pipes the NUL-separated rel-path list to `cd <snap> && xargs -0
+    /// sha256sum` on the remote, then parses the standard sha256sum output
+    /// (same parser the local backend uses — output format is identical).
     fn hash_files(
         &self,
-        _snapshot_name: &str,
-        _needs_hashing: &[NeedsHashing],
+        snapshot_name: &str,
+        needs_hashing: &[NeedsHashing],
     ) -> Result<Vec<HashedEntry>, StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+        validate_snapshot_name(snapshot_name)?;
+        if needs_hashing.is_empty() {
+            return Ok(Vec::new());
+        }
+        let snap_path = self.snapshot_path(snapshot_name);
+
+        let mut cmd = self.ssh_command();
+        // The `cd` makes sha256sum print paths relative to the snapshot
+        // root, which is the form our cache expects.
+        cmd.arg(format!(
+            "cd '{snap_path}' && xargs -0 --no-run-if-empty sha256sum"
+        ));
+
+        let by_path = run_sha256sum_via_xargs(cmd, needs_hashing)?;
+        zip_hashes(needs_hashing, by_path)
     }
 
+    /// Reads `<dest>/checksums.db` via SSH.  Distinguishes "file does not
+    /// exist" from real errors by using a dedicated exit code (42) inside
+    /// the remote shell script — `cat` alone would conflate both cases.
     fn read_checksum_db(&self) -> Result<Option<String>, StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+        let db_path = self.dest_file_path(CHECKSUM_DB_NAME);
+        self.read_remote_file_optional(&db_path)
     }
 
-    fn write_checksum_db(&self, _content: &str) -> Result<(), StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+    /// Atomic remote write: stream the content into a `.tmp` sibling, then
+    /// `mv` it into place.  POSIX `mv` between paths on the same filesystem
+    /// is atomic, so an interrupted run leaves either the old file or the
+    /// new one — never a half-written one.
+    fn write_checksum_db(&self, content: &str) -> Result<(), StorageBackendError> {
+        let final_path = self.dest_file_path(CHECKSUM_DB_NAME);
+        let tmp_path = format!("{final_path}{TMP_SUFFIX}");
+        self.write_remote_file_atomic(&tmp_path, &final_path, content.as_bytes())
     }
 
+    /// Same atomic write pattern as [`Self::write_checksum_db`], scoped to a
+    /// snapshot directory.
     fn write_snapshot_sha256(
         &self,
-        _snapshot_name: &str,
-        _content: &str,
+        snapshot_name: &str,
+        content: &str,
     ) -> Result<(), StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+        validate_snapshot_name(snapshot_name)?;
+        let snap_path = self.snapshot_path(snapshot_name);
+        let final_path = format!("{snap_path}/{SNAPSHOT_SHA256_NAME}");
+        let tmp_path = format!("{final_path}{TMP_SUFFIX}");
+        self.write_remote_file_atomic(&tmp_path, &final_path, content.as_bytes())
     }
 
+    /// Reads `<dest>/<snap>/sha256sum`.  Returns `Ok(None)` for snapshots
+    /// that predate the checksum feature (or were created with
+    /// `checksum = false` — see step 6).
     fn read_snapshot_sha256(
         &self,
-        _snapshot_name: &str,
+        snapshot_name: &str,
     ) -> Result<Option<String>, StorageBackendError> {
-        Err(StorageBackendError::Command(
-            "remote checksum support is not yet implemented".to_string(),
-        ))
+        validate_snapshot_name(snapshot_name)?;
+        let snap_path = self.snapshot_path(snapshot_name);
+        let file_path = format!("{snap_path}/{SNAPSHOT_SHA256_NAME}");
+        self.read_remote_file_optional(&file_path)
+    }
+}
+
+// ── RemoteBackend helpers (paths and small SSH wrappers) ────────────────────
+
+impl RemoteBackend {
+    /// Builds the absolute path of `<dest>/<snapshot_name>` on the remote
+    /// host (trailing slashes on `self.path` are normalized away).
+    fn snapshot_path(&self, snapshot_name: &str) -> String {
+        format!("{}/{}", self.path.trim_end_matches('/'), snapshot_name)
+    }
+
+    /// Absolute path of a file directly inside the destination root.
+    fn dest_file_path(&self, file_name: &str) -> String {
+        format!("{}/{}", self.path.trim_end_matches('/'), file_name)
+    }
+
+    /// Reads a remote file via SSH.  Exit code 42 (chosen because nothing
+    /// in `cat` uses it) signals "file does not exist"; anything else
+    /// non-zero is a real error and the stderr is surfaced.
+    fn read_remote_file_optional(
+        &self,
+        remote_path: &str,
+    ) -> Result<Option<String>, StorageBackendError> {
+        let cmd =
+            format!("if [ -f '{remote_path}' ]; then cat '{remote_path}'; else exit 42; fi");
+        let output = self.ssh_command().arg(&cmd).output()?;
+        match output.status.code() {
+            Some(0) => Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned())),
+            Some(42) => Ok(None),
+            _ => Err(StorageBackendError::Ssh(format!(
+                "failed to read remote file '{remote_path}': {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ))),
+        }
+    }
+
+    /// Atomic remote write helper used by both `write_checksum_db` and
+    /// `write_snapshot_sha256`: stream `content` into `tmp_path` via the
+    /// remote shell, then `mv` to `final_path`.  On failure the tmp file
+    /// is left in place — the next backup will overwrite it.
+    fn write_remote_file_atomic(
+        &self,
+        tmp_path: &str,
+        final_path: &str,
+        content: &[u8],
+    ) -> Result<(), StorageBackendError> {
+        let cmd = format!("cat > '{tmp_path}' && mv '{tmp_path}' '{final_path}'");
+        let mut child = self
+            .ssh_command()
+            .arg(&cmd)
+            .stdin(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // Closes on scope exit, which signals EOF to the remote `cat` and
+        // lets the chained `mv` run.
+        {
+            let stdin = child.stdin.as_mut().ok_or_else(|| {
+                StorageBackendError::Ssh("ssh process has no stdin".to_string())
+            })?;
+            stdin.write_all(content)?;
+        }
+
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            return Err(StorageBackendError::Ssh(format!(
+                "remote write to '{final_path}' failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -589,7 +709,12 @@ impl StorageBackend for LocalBackend {
             return Ok(Vec::new());
         }
         let snap_root = self.path.join(snapshot_name);
-        let by_path = run_sha256sum_via_xargs(&snap_root, needs_hashing, None)?;
+
+        let mut cmd = Command::new("xargs");
+        cmd.arg("-0").arg("--no-run-if-empty").arg("sha256sum");
+        cmd.current_dir(&snap_root);
+
+        let by_path = run_sha256sum_via_xargs(cmd, needs_hashing)?;
         zip_hashes(needs_hashing, by_path)
     }
 
@@ -692,30 +817,23 @@ fn parse_find_inodes(bytes: &[u8]) -> Result<Vec<(u64, String)>, StorageBackendE
     Ok(out)
 }
 
-/// Spawns `xargs -0 sha256sum` (optionally wrapped in `ssh …` via
-/// `ssh_command_builder`) with `cwd` as the working directory, feeds the
-/// NUL-separated rel-path list over stdin, and returns a map of
-/// `rel_path → hash`.
+/// Spawns the supplied `cmd` (a fully configured `xargs -0 sha256sum`
+/// invocation — local or wrapped in `ssh …`), feeds the NUL-separated
+/// rel-path list over stdin, and returns a map of `rel_path → hash`.
 ///
-/// `ssh_command_builder` is `None` for the local backend (`xargs` runs
-/// directly) and `Some(builder)` for the remote backend (`ssh` runs `xargs`
-/// on the remote host).  Returning the map by path lets the caller re-attach
-/// the inode that came from `needs_hashing` without depending on input
-/// ordering being preserved by `xargs`.
+/// Returning the map by path lets the caller re-attach the inode that came
+/// from `needs_hashing` without depending on input ordering being preserved
+/// by `xargs`.
+///
+/// The caller is responsible for putting the command in the right working
+/// directory:
+///   * Local backend  → `cmd.current_dir(snapshot_root)`.
+///   * Remote backend → the shell command run via ssh starts with
+///     `cd '<snapshot_root>' && xargs …`.
 fn run_sha256sum_via_xargs(
-    cwd: &std::path::Path,
+    mut cmd: Command,
     needs_hashing: &[NeedsHashing],
-    ssh_command_builder: Option<Command>,
 ) -> Result<HashMap<String, String>, StorageBackendError> {
-    let mut cmd = match ssh_command_builder {
-        Some(c) => c,
-        None => {
-            let mut c = Command::new("xargs");
-            c.arg("-0").arg("--no-run-if-empty").arg("sha256sum");
-            c.current_dir(cwd);
-            c
-        }
-    };
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
