@@ -1,6 +1,6 @@
 // cargo run --example test
 
-use std::{fs, path::Path};
+use std::{ path::Path};
 
 use rusqlite::{Connection, Result};
 use thiserror::Error;
@@ -11,24 +11,27 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
 }
 
-#[derive(Debug)]
-struct FileChecksum {
-    inode: i32,
-    path: String,
-    checksum: Option<Vec<u8>>,
-}
+// #[derive(Debug)]
+// struct FileChecksum {
+//     inode: i32,
+//     path: String,
+//     checksum: Option<Vec<u8>>,
+// }
 
 fn main() {
-    let db_path = Path::new("/tmp/checksum.db");
 
-    let conn = Connection::open(db_path);
-    match conn {
-        Ok(c) => println!("has connection"),
-        Err(e) => println!("error"),
-    }
-    //create_db_in_needed(&conn.unwrap());
+    let _db = Database::new();
 
-    println!("test");
+    // let db_path = Path::new("/tmp/checksum.db");
+
+    // let conn = Connection::open(db_path);
+    // match conn {
+    //     Ok(c) => println!("has connection"),
+    //     Err(e) => println!("error"),
+    // }
+    // //create_db_in_needed(&conn.unwrap());
+
+    // println!("test");
 }
 
 // fn create_db_in_needed(conn: &Connection) {
@@ -62,6 +65,8 @@ impl Database {
         if self.table_exists(CHECKSUM_TABLE) {
             return;
         }
+
+        println!("init database now ......")
     }
 
     /**
