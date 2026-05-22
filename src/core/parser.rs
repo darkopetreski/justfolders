@@ -167,7 +167,14 @@ pub struct InitArgs {
     /// Keep all snapshots from the last N calendar days (see `[policy]` in the generated config).
     #[arg(long = "keep-within-days", value_name = "N")]
     pub keep_within_days: Option<u32>,
-    
+
+    /// Disable per-snapshot SHA-256 checksum generation.
+    /// By default every backup writes a `sha256sum` manifest inside the
+    /// snapshot directory and maintains a global cache so `justfolders
+    /// verify` can detect bit rot.  Pass this flag to opt out.
+    #[arg(long = "no-checksum")]
+    pub no_checksum: bool,
+
     /// Print the config to stdout instead of saving it.
     #[arg(long = "dry-run")]
     pub dry_run: bool,

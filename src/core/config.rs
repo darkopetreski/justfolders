@@ -48,6 +48,22 @@ pub struct Config {
     /// When `true`, any skipped file fails the entire backup: the snapshot is
     /// discarded, no rotation happens, and an error notification is sent.
     pub strict: bool,
+
+    /// Whether to compute and store SHA-256 checksums for every file in each
+    /// snapshot.
+    ///
+    /// When `true` (default), each backup writes a `sha256sum` manifest
+    /// inside the snapshot directory and maintains a global `checksums.db`
+    /// cache keyed by `(relative_path, inode)` so unchanged files are not
+    /// re-hashed.  `justfolders verify` then re-checks every file against
+    /// its recorded hash to detect bit-rot.
+    ///
+    /// Setting `checksum = false` skips the whole step.  Useful when the
+    /// underlying storage already provides integrity (ZFS, Btrfs scrub) or
+    /// when the extra hashing cost is not worth it on very large snapshots.
+    /// Snapshots created with `checksum = false` simply have no `sha256sum`
+    /// file; `justfolders verify` reports that clearly and refuses to lie.
+    pub checksum: bool,
 }
 
 /// TLS mode used when connecting to the SMTP server.
@@ -329,6 +345,17 @@ impl Config {
             })?
             .unwrap_or(false);
 
+        // Checksumming is on by default — both for new installs and for any
+        // pre-existing config files that simply don't mention the key.  Users
+        // who want to opt out must say so explicitly with `checksum = false`.
+        let checksum = ini
+            .getbool("default", "checksum")
+            .map_err(|e| ConfigError::InvalidValue {
+                field: "checksum".to_string(),
+                reason: e,
+            })?
+            .unwrap_or(true);
+
         // A single-quote in any path that ends up inside a remote shell command
         // (SSH, rsync -e wrapper) breaks the quoting and enables shell injection.
         // Reject such paths at load time rather than silently misquoting them later.
@@ -360,6 +387,7 @@ impl Config {
             policy,
             notify,
             strict,
+            checksum,
         })
     }
 }
@@ -382,6 +410,10 @@ pub struct ConfigGeneratorParams {
     /// Maximum transfer bandwidth in KB/s. `None` means unlimited.
     pub bwlimit: Option<u32>,
     pub policy: RetentionPolicy,
+    /// Whether to write per-snapshot SHA-256 checksums.  `true` is the
+    /// default (the user said nothing or passed nothing).  `false` is
+    /// emitted when the user explicitly disabled the feature at init time.
+    pub checksum: bool,
 }
 
 // ── Generation ─────────────────────────────────────────────────────────────
@@ -495,6 +527,23 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         #                   you would rather retry than keep an incomplete one.
         # strict = false
 
+        # Per-snapshot SHA-256 checksums (default: true).
+        #
+        # When enabled, every backup writes a `sha256sum` file inside the
+        # snapshot directory listing one line per file (compatible with
+        # `sha256sum -c`).  A global `checksums.db` cache at the destination
+        # root remembers (relative_path, inode, hash) triples so unchanged
+        # files — i.e. those still hard-linked from a previous snapshot —
+        # are never re-hashed.  Run `justfolders verify <snapshot>` later
+        # to detect bit rot.
+        #
+        # Set to false only if you have another integrity story (ZFS / Btrfs
+        # scrub, content-addressed storage) or if you cannot afford the
+        # extra I/O on very large datasets.  Snapshots made with
+        # `checksum = false` simply have no `sha256sum` file; verify will
+        # tell you so rather than pretend everything is fine.
+        checksum = {checksum}
+
         [policy]
         # Number of hourly snapshots to keep (0 = disabled)
         {keep_hourly}
@@ -546,6 +595,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         dest = params.dest.original,
         disable_logs = params.disable_logs,
         rsync_flags = params.rsync_flags,
+        checksum = params.checksum,
     );
 
     raw.lines()

@@ -35,6 +35,8 @@ impl From<InitArgs> for ConfigGeneratorParams {
                 keep_yearly: args.keep_yearly,
                 keep_within_days: args.keep_within_days,
             },
+            // `--no-checksum` is the opt-out; absence means the default (on).
+            checksum: !args.no_checksum,
         }
     }
 }

@@ -150,17 +150,25 @@ fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
     // already on disk and usable, so a checksum failure is reported as a
     // warning and the backup continues.  The next run will rebuild the
     // cache and re-attempt the per-snapshot file.
-    match checksum_step::run(layout.backend(), layout.timestamp()) {
-        Ok(summary) => println!(
-            "checksum complete: {} file(s) ({} hashed, {} reused from cache)",
-            summary.total(),
-            summary.hashed,
-            summary.reused,
-        ),
-        Err(e) => eprintln!(
-            "warning: failed to compute checksums for {}: {e}",
-            layout.timestamp()
-        ),
+    //
+    // When `checksum = false` in the config the whole step is skipped —
+    // the snapshot simply has no `sha256sum` file and `justfolders verify`
+    // will refuse to lie about it.
+    if config.checksum {
+        match checksum_step::run(layout.backend(), layout.timestamp()) {
+            Ok(summary) => println!(
+                "checksum complete: {} file(s) ({} hashed, {} reused from cache)",
+                summary.total(),
+                summary.hashed,
+                summary.reused,
+            ),
+            Err(e) => eprintln!(
+                "warning: failed to compute checksums for {}: {e}",
+                layout.timestamp()
+            ),
+        }
+    } else {
+        println!("checksum step skipped (checksum = false in config)");
     }
 
     let snapshots = layout.backend().list_snapshots()?;

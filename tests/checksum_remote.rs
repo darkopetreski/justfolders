@@ -68,6 +68,7 @@ fn remote_localhost_config(dest_dir: &Path) -> Config {
         policy: RetentionPolicy::default(),
         notify: None,
         strict: false,
+        checksum: true,
     }
 }
 
