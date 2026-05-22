@@ -3,16 +3,16 @@
 use std::path::Path;
 
 use rusqlite::{Connection, Result};
-use thiserror::Error;
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
     #[error("Sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-        #[error("IO error: {0}")]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
 
@@ -40,11 +40,58 @@ fn main() {
     //     }
     // }
 
-    let _ = ingest_files(&db);
+    //let _ = ingest_files(&db);
+
+    test(&db);
 }
 
-
 const BATCH_SIZE: usize = 5000;
+
+fn test(db: &Database) {
+    let child = Command::new("find")
+        .arg("/")
+        .arg("-type")
+        .arg("f")
+        .arg("-printf")
+        .arg("%i %p\n")
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let stdout = child.stdout.unwrap();
+    let reader = BufReader::new(stdout);
+
+    let mut counter = 0;
+    for line in reader.lines() {
+        let line = line.unwrap();
+
+        let mut parts = line.splitn(2, ' ');
+        let inode: i64 = match parts.next().and_then(|x| x.parse().ok()) {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let path = match parts.next() {
+            Some(p) => p,
+            None => continue,
+        };
+
+        counter += 1;
+        if counter == 1000000 {
+            break;
+        }
+
+        if counter % 10000 == 0 {
+            println!("new batch of 1000");
+        }
+        //println!("{}", path);
+        let row_res = db.fetch(&path);
+        if let Ok(row) = row_res {
+            //println!("Inode number of the found path is {}", row.inode);
+        }
+
+    }
+}
 
 fn ingest_files(db: &Database) -> Result<(), DatabaseError> {
     let child = Command::new("find")
