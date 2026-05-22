@@ -11,32 +11,10 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
 }
 
-// #[derive(Debug)]
-// struct FileChecksum {
-//     inode: i32,
-//     path: String,
-//     checksum: Option<Vec<u8>>,
-// }
-
 fn main() {
     let _db = Database::new();
-
-    // let db_path = Path::new("/tmp/checksum.db");
-
-    // let conn = Connection::open(db_path);
-    // match conn {
-    //     Ok(c) => println!("has connection"),
-    //     Err(e) => println!("error"),
-    // }
-    // //create_db_in_needed(&conn.unwrap());
-
-    // println!("test");
 }
 
-// fn create_db_in_needed(conn: &Connection) {
-
-//     if fs::exists(path)
-//}
 
 const DB_PATH: &str = "/tmp/checksum.db";
 const CHECKSUM_TABLE: &str = "checksum";
@@ -58,6 +36,17 @@ impl Database {
     }
 
     /**
+     * Insert new item
+     */
+    pub fn insert(inode: u64, path: &Path, hash: [u8; 16]) {
+
+    }
+
+    pub fn update(inode: u64, path: &Path, hash: [u8; 16]) {
+
+    }
+
+    /**
      * Initialize tables if needed
      */
     fn init_tables(&self) -> Result<(), DatabaseError> {
@@ -69,7 +58,7 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS {} (
             id INTEGER PRIMARY KEY,
             inode INTEGER NOT NULL,
-            path TEXT NOT NULL,
+            path TEXT NOT NULL UNIQUE,
             hash BLOB NOT NULL
         )",
             CHECKSUM_TABLE
@@ -92,3 +81,4 @@ impl Database {
             .is_ok()
     }
 }
+ 
