@@ -4,11 +4,16 @@ use std::path::Path;
 
 use rusqlite::{Connection, Result};
 use thiserror::Error;
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
     #[error("Sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
+
+        #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 fn main() {
@@ -23,19 +28,72 @@ fn main() {
         println!("record not found");
     }
 
-    let insert_result = db.insert(&FileRow::new_for_insert(
-        123,
-        "/tmp/test".into(),
-        "123".into(),
-    ));
-    match insert_result {
-        Ok(_) => println!("inserted"),
-        Err(e) => {
-            println!("Error, cannot insert: {}", e)
-        }
-    }
+    // let insert_result = db.insert(&FileRow::new_for_insert(
+    //     123,
+    //     "/tmp/test".into(),
+    //     "123".into(),
+    // ));
+    // match insert_result {
+    //     Ok(_) => println!("inserted"),
+    //     Err(e) => {
+    //         println!("Error, cannot insert: {}", e)
+    //     }
+    // }
+
+    let _ = ingest_files(&db);
 }
 
+
+const BATCH_SIZE: usize = 5000;
+
+fn ingest_files(db: &Database) -> Result<(), DatabaseError> {
+    let child = Command::new("find")
+        .arg("/")
+        .arg("-type")
+        .arg("f")
+        .arg("-printf")
+        .arg("%i %p\n")
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child.stdout.unwrap();
+    let reader = BufReader::new(stdout);
+
+    let mut tx = db.conn.unchecked_transaction()?;
+    let mut count = 0;
+
+    for line in reader.lines() {
+        let line = line?;
+
+        let mut parts = line.splitn(2, ' ');
+        let inode: i64 = match parts.next().and_then(|x| x.parse().ok()) {
+            Some(v) => v,
+            None => continue,
+        };
+
+        let path = match parts.next() {
+            Some(p) => p,
+            None => continue,
+        };
+
+        tx.execute(
+            "INSERT INTO checksum (inode, path, hash) VALUES (?1, ?2, ?3)",
+            (inode, path, ""),
+        )?;
+
+        count += 1;
+
+        // 🔥 batch flush
+        if count % BATCH_SIZE == 0 {
+            tx.commit()?;
+            tx = db.conn.unchecked_transaction()?;
+            println!("Committed {} rows", count);
+        }
+    }
+
+    tx.commit()?; // final flush
+    Ok(())
+}
 const DB_PATH: &str = "/tmp/checksum.db";
 const CHECKSUM_TABLE: &str = "checksum";
 
@@ -58,7 +116,7 @@ impl FileRow {
 }
 
 struct Database {
-    conn: Connection,
+    pub conn: Connection,
 }
 
 impl Database {
