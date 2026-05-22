@@ -105,17 +105,30 @@ impl Database {
         self.conn
             .execute(&sql, (file_row.inode, &file_row.path, &file_row.hash))?;
 
-        let id = self.conn.last_insert_rowid();
-
         Ok(FileRow {
-            id,
+            id: self.conn.last_insert_rowid(),
             inode: file_row.inode,
             path: file_row.path.clone(),
             hash: file_row.hash.clone(),
         })
     }
 
-    //pub fn update(&self, inode: i64, path: &str, hash: &str) {}
+    /**
+     * Update by id
+     */
+    pub fn update(&self, file_row: &FileRow) -> Result<(), DatabaseError> {
+        let sql = format!(
+            "UPDATE {} SET inode = ?1, path = ?2, hash = ?3 WHERE id = ?4",
+            CHECKSUM_TABLE
+        );
+
+        self.conn.execute(
+            &sql,
+            (file_row.inode, &file_row.path, &file_row.hash, file_row.id),
+        )?;
+
+        Ok(())
+    }
 
     /**
      * Initialize tables if needed
@@ -135,7 +148,7 @@ impl Database {
             CHECKSUM_TABLE
         );
 
-        self.conn.execute(&sql, [])?;
+        self.conn.execute(&sql, ())?;
         Ok(())
     }
 
