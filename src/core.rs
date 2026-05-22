@@ -7,3 +7,4 @@ pub mod backup_layout;
 pub mod retention;
 pub mod notify;
 pub mod checksum;
+pub mod checksum_step;

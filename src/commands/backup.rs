@@ -1,4 +1,5 @@
 use crate::core::backup_layout::BackupLayout;
+use crate::core::checksum_step;
 use crate::core::config::Config;
 use crate::core::notify::{self, NotifyState};
 use crate::core::parser::BackupArgs;
@@ -139,6 +140,28 @@ fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
     };
 
     layout.move_in_progress_to_latest()?;
+
+    // Compute checksums for the newly sealed snapshot.  This runs *after*
+    // promotion (so any `sha256sum` file is part of the snapshot from the
+    // start) and *before* retention (so the cache is updated with the
+    // current snapshot's inodes before old snapshots are pruned).
+    //
+    // Failures here are intentionally non-fatal: the snapshot itself is
+    // already on disk and usable, so a checksum failure is reported as a
+    // warning and the backup continues.  The next run will rebuild the
+    // cache and re-attempt the per-snapshot file.
+    match checksum_step::run(layout.backend(), layout.timestamp()) {
+        Ok(summary) => println!(
+            "checksum complete: {} file(s) ({} hashed, {} reused from cache)",
+            summary.total(),
+            summary.hashed,
+            summary.reused,
+        ),
+        Err(e) => eprintln!(
+            "warning: failed to compute checksums for {}: {e}",
+            layout.timestamp()
+        ),
+    }
 
     let snapshots = layout.backend().list_snapshots()?;
     let mut to_delete = apply_policy(&config.policy, &snapshots);
