@@ -1,6 +1,6 @@
 // cargo run --example test
 
-use std::{ path::Path};
+use std::path::Path;
 
 use rusqlite::{Connection, Result};
 use thiserror::Error;
@@ -19,7 +19,6 @@ pub enum DatabaseError {
 // }
 
 fn main() {
-
     let _db = Database::new();
 
     // let db_path = Path::new("/tmp/checksum.db");
@@ -54,23 +53,34 @@ impl Database {
         let db_path = Path::new(DB_PATH);
         let conn = Connection::open(db_path)?;
         let db = Self { conn };
-        db.init_tables();
+        db.init_tables()?;
         Ok(db)
     }
 
     /**
      * Initialize tables if needed
      */
-    fn init_tables(&self) {
+    fn init_tables(&self) -> Result<(), DatabaseError> {
         if self.table_exists(CHECKSUM_TABLE) {
-            return;
+            return Ok(());
         }
+        println!("Initialize database now");
+        let sql = format!(
+            "CREATE TABLE IF NOT EXISTS {} (
+            id INTEGER PRIMARY KEY,
+            inode INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            hash BLOB NOT NULL
+        )",
+            CHECKSUM_TABLE
+        );
 
-        println!("init database now ......")
+        self.conn.execute(&sql, [])?;
+        Ok(())
     }
 
     /**
-     * Check if the database is initialized
+     * Check if the table exists
      */
     fn table_exists(&self, name: &str) -> bool {
         self.conn
