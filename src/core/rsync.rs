@@ -118,15 +118,14 @@ impl Rsync {
         // Failure to write to the log is intentionally non-fatal: the transfer
         // itself succeeded (or failed) on its own merits and we don't want a
         // log I/O hiccup to mask that outcome.
-        if !stderr.is_empty() {
-            if let Some(ref log_path) = self.log_path {
-                if let Err(e) = append_stderr_to_log(log_path, &stderr) {
-                    eprintln!(
-                        "warning: failed to append rsync stderr to {}: {e}",
-                        log_path.display()
-                    );
-                }
-            }
+        if !stderr.is_empty()
+            && let Some(ref log_path) = self.log_path
+            && let Err(e) = append_stderr_to_log(log_path, &stderr)
+        {
+            eprintln!(
+                "warning: failed to append rsync stderr to {}: {e}",
+                log_path.display()
+            );
         }
 
         // rsync exit codes 23 and 24 indicate a *partial* transfer:

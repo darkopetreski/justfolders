@@ -178,8 +178,8 @@ fn parse_snapshot_date(name: &str) -> Option<NaiveDateTime> {
 /// - `max_buckets`– how many distinct buckets this rule may claim.
 /// - `bucket_of`  – maps a timestamp to the rule's bucket key (e.g. ISO week).
 /// - `skip`       – buckets already covered by finer-grained rules; snapshots
-///                  whose bucket is in `skip` are passed through to the pool
-///                  returned to the caller so a coarser rule can evaluate them.
+///   whose bucket is in `skip` are passed through to the pool returned to
+///   the caller so a coarser rule can evaluate them.
 /// - `category`   – the `SnapshotCategory` label to attach to claimed entries.
 /// - `kept`       – accumulator: claimed entries are appended here.
 ///
@@ -407,10 +407,10 @@ fn run_policy(
         let cutoff = today - Duration::days(n as i64);
 
         for (name, cat) in &mut kept {
-            if let Some(dt) = parse_snapshot_date(name) {
-                if dt.date() >= cutoff {
-                    *cat = SnapshotCategory::WithinDays;
-                }
+            if let Some(dt) = parse_snapshot_date(name)
+                && dt.date() >= cutoff
+            {
+                *cat = SnapshotCategory::WithinDays;
             }
         }
 

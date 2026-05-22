@@ -46,6 +46,12 @@ pub enum Commands {
     /// backup failure, and for periodic health-checks from cron.
     TestNotify(TestNotifyArgs),
 
+    /// Verify a snapshot by running `sha256sum -c sha256sum` inside it.
+    /// Checks every file recorded in the snapshot's `sha256sum` against
+    /// its current on-disk contents.  Works for both local and remote
+    /// destinations.
+    Verify(VerifyArgs),
+
     // TODO: Restore — restore a named snapshot (or `latest`) to a given target directory.
     //       Suggested flags: --snapshot <NAME|latest>, --dest <DIR>, --path <SUBPATH>
     //       (--path enables single-file / single-directory restore).
@@ -74,6 +80,19 @@ pub struct TestNotifyArgs {
     /// Path to the config file.
     #[arg(long = "config", value_name = "FILE", required = true)]
     pub config: PathBuf,
+}
+
+#[derive(Parser, Debug)]
+#[command(arg_required_else_help = true)]
+pub struct VerifyArgs {
+    /// Path to the config file.
+    #[arg(long = "config", value_name = "FILE", required = true)]
+    pub config: PathBuf,
+
+    /// Snapshot to verify (timestamp `YYYY-MM-DD-HHMMSS`, or `latest`).
+    /// Defaults to `latest`.
+    #[arg(value_name = "SNAPSHOT", default_value = "latest")]
+    pub snapshot: String,
 }
 
 #[derive(Parser, Debug)]

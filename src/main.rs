@@ -12,6 +12,7 @@ fn main() {
         Commands::Snapshots(args) => commands::snapshots::run(args).map_err(|e| e.to_string()),
         Commands::Init(args) => commands::init::run(args).map_err(|e| e.to_string()),
         Commands::TestNotify(args) => commands::test_notify::run(args).map_err(|e| e.to_string()),
+        Commands::Verify(args) => commands::verify::run(args).map_err(|e| e.to_string()),
     };
 
     if let Err(e) = result {

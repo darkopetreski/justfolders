@@ -64,6 +64,42 @@ fn validate_snapshot_name(name: &str) -> Result<(), StorageBackendError> {
     }
 }
 
+/// Same as [`validate_snapshot_name`] but also accepts the literal string
+/// `"latest"`, which transparently resolves through the `latest` symlink to
+/// the most recent snapshot.  Used by [`StorageBackend::verify_snapshot`]
+/// so the user can run `justfolders verify` without naming a specific
+/// timestamp.
+fn validate_snapshot_name_or_latest(name: &str) -> Result<(), StorageBackendError> {
+    if name == LATEST_NAME {
+        Ok(())
+    } else {
+        validate_snapshot_name(name)
+    }
+}
+
+/// Maps a `sha256sum -c` exit code to a [`VerifyOutcome`].
+///
+/// * `0` → every recorded hash matched.
+/// * `1` → at least one mismatch (sha256sum already printed the offending
+///   `FAILED` lines to stderr, so we just record the verdict here).
+/// * anything else → the verification process itself misbehaved (signalled,
+///   missing `sha256sum` binary, etc.) — surface as a real error so the
+///   user gets a clear stack rather than a silent "everything's fine".
+fn decode_sha256sum_check_status(
+    code: Option<i32>,
+) -> Result<VerifyOutcome, StorageBackendError> {
+    match code {
+        Some(0) => Ok(VerifyOutcome::Clean),
+        Some(1) => Ok(VerifyOutcome::Mismatch),
+        Some(other) => Err(StorageBackendError::Command(format!(
+            "sha256sum -c exited unexpectedly with code {other}"
+        ))),
+        None => Err(StorageBackendError::Command(
+            "sha256sum -c was terminated by a signal".to_string(),
+        )),
+    }
+}
+
 /// Abstracts destination-side filesystem operations for both local and remote destinations.
 ///
 /// Implementations: [`LocalBackend`] for local paths, [`RemoteBackend`] for SSH destinations.
@@ -157,6 +193,34 @@ pub trait StorageBackend {
         &self,
         snapshot_name: &str,
     ) -> Result<Option<String>, StorageBackendError>;
+
+    /// Verify a snapshot by running `sha256sum -c sha256sum` inside its
+    /// directory.  Per-file `OK` / `FAILED` lines are emitted live to the
+    /// current process's stdout / stderr so the user sees progress in real
+    /// time — the [`VerifyOutcome`] returned just carries the verdict.
+    ///
+    /// `snapshot_name` may be the literal string `"latest"` to verify
+    /// whichever snapshot the `latest` symlink currently points at;
+    /// otherwise it must be a `YYYY-MM-DD-HHMMSS` timestamp.
+    fn verify_snapshot(
+        &self,
+        snapshot_name: &str,
+    ) -> Result<VerifyOutcome, StorageBackendError>;
+}
+
+/// Verdict of a [`StorageBackend::verify_snapshot`] run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerifyOutcome {
+    /// Every file in the snapshot matched its recorded SHA-256.
+    Clean,
+    /// At least one file mismatched (`sha256sum -c` exited with code 1).
+    /// The per-file `FAILED` lines were already printed live by sha256sum.
+    Mismatch,
+    /// The snapshot has no `sha256sum` file — either it predates the
+    /// checksum feature, or `checksum = false` was set in the config for
+    /// the run that created it.  Not an error per se, but the snapshot
+    /// cannot be verified.
+    NoChecksumFile,
 }
 
 /// [`StorageBackend`] implementation for a local filesystem destination.
@@ -308,13 +372,13 @@ impl StorageBackend for RemoteBackend {
             .parse::<u32>()
             .ok();
 
-        if let Some(pid) = pid {
-            if is_process_alive(pid) {
-                return Err(StorageBackendError::LockContended(format!(
-                    "{}:{}",
-                    self.host, lock
-                )));
-            }
+        if let Some(pid) = pid
+            && is_process_alive(pid)
+        {
+            return Err(StorageBackendError::LockContended(format!(
+                "{}:{}",
+                self.host, lock
+            )));
         }
 
         // No lock or stale lock — (re)create it with the local PID.
@@ -453,6 +517,41 @@ impl StorageBackend for RemoteBackend {
         let snap_path = self.snapshot_path(snapshot_name);
         let file_path = format!("{snap_path}/{SNAPSHOT_SHA256_NAME}");
         self.read_remote_file_optional(&file_path)
+    }
+
+    /// Runs `cd '<snap>' && sha256sum -c sha256sum` on the remote host.
+    /// stdout/stderr stream live over SSH so the user sees the same
+    /// `<file>: OK` / `<file>: FAILED` lines they would see locally.
+    ///
+    /// Existence of the per-snapshot file is probed first so we can return
+    /// [`VerifyOutcome::NoChecksumFile`] cleanly rather than relying on the
+    /// remote `sha256sum -c` error message.
+    fn verify_snapshot(
+        &self,
+        snapshot_name: &str,
+    ) -> Result<VerifyOutcome, StorageBackendError> {
+        validate_snapshot_name_or_latest(snapshot_name)?;
+        let snap_path = self.snapshot_path(snapshot_name);
+
+        // Probe existence first.  Same exit-code-42 trick we use for
+        // `read_remote_file_optional`, just without the actual cat payload.
+        let probe = format!(
+            "if [ -f '{snap_path}/{SNAPSHOT_SHA256_NAME}' ]; then exit 0; else exit 42; fi"
+        );
+        let probe_status = self.ssh_command().arg(&probe).status()?;
+        match probe_status.code() {
+            Some(0) => {}
+            Some(42) => return Ok(VerifyOutcome::NoChecksumFile),
+            _ => {
+                return Err(StorageBackendError::Ssh(format!(
+                    "failed to probe '{snap_path}/{SNAPSHOT_SHA256_NAME}'"
+                )))
+            }
+        }
+
+        let cmd = format!("cd '{snap_path}' && sha256sum -c {SNAPSHOT_SHA256_NAME}");
+        let status = self.ssh_command().arg(&cmd).status()?;
+        decode_sha256sum_check_status(status.code())
     }
 }
 
@@ -770,6 +869,28 @@ impl StorageBackend for LocalBackend {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Runs `sha256sum -c sha256sum` inside the snapshot directory.  stdout
+    /// and stderr are inherited from the current process so per-file lines
+    /// appear live; only the final verdict is captured in the return value.
+    fn verify_snapshot(
+        &self,
+        snapshot_name: &str,
+    ) -> Result<VerifyOutcome, StorageBackendError> {
+        validate_snapshot_name_or_latest(snapshot_name)?;
+        let snap_root = self.path.join(snapshot_name);
+        if !snap_root.join(SNAPSHOT_SHA256_NAME).exists() {
+            return Ok(VerifyOutcome::NoChecksumFile);
+        }
+
+        let status = Command::new("sha256sum")
+            .arg("-c")
+            .arg(SNAPSHOT_SHA256_NAME)
+            .current_dir(&snap_root)
+            .status()?;
+
+        decode_sha256sum_check_status(status.code())
     }
 }
 

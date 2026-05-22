@@ -210,7 +210,7 @@ impl RetentionPolicy {
         let within_rules = [
             self.keep_within_days,
         ];
-        count_rules.iter().chain(within_rules.iter()).all(|v| v.map_or(true, |n| n == 0))
+        count_rules.iter().chain(within_rules.iter()).all(|v| v.is_none_or(|n| n == 0))
     }
 
     /// Loads retention policy settings from the `[policy]` INI section.
