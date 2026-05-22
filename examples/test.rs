@@ -50,6 +50,7 @@ const BATCH_SIZE: usize = 5000;
 fn test(db: &Database) {
     let child = Command::new("find")
         .arg("/")
+        .arg("-xdev")
         .arg("-type")
         .arg("f")
         .arg("-printf")
@@ -96,6 +97,7 @@ fn test(db: &Database) {
 fn ingest_files(db: &Database) -> Result<(), DatabaseError> {
     let child = Command::new("find")
         .arg("/")
+        .arg("-xdev")
         .arg("-type")
         .arg("f")
         .arg("-printf")

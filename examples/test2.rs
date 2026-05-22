@@ -44,16 +44,17 @@ fn main() {
     //     }
     // }
 
-    let _ = ingest_files(&db);
+    //let _ = ingest_files(&db);
 
-    //test(&db);
+    test(&db);
 }
 
-const BATCH_SIZE: usize = 5000;
+const BATCH_SIZE: usize = 1000000;
 
 fn test(db: &Database) {
     let child = Command::new("find")
         .arg("/")
+        .arg("-xdev")
         .arg("-type")
         .arg("f")
         .arg("-printf")
@@ -99,6 +100,7 @@ fn test(db: &Database) {
 fn ingest_files(db: &Database) -> Result<(), DatabaseError> {
     let child = Command::new("find")
         .arg("/")
+        .arg("-xdev")
         .arg("-type")
         .arg("f")
         .arg("-printf")
@@ -134,10 +136,10 @@ fn ingest_files(db: &Database) -> Result<(), DatabaseError> {
         count += 1;
 
         // 🔥 batch flush
-        if count % BATCH_SIZE == 0 {
-            db.flush()?;
-            println!("Committed {} rows", count);
-        }
+        // if count % BATCH_SIZE == 0 {
+        //     db.flush()?;
+        //     println!("Committed {} rows", count);
+        // }
     }
 
     db.flush()?; // final flush
@@ -173,7 +175,9 @@ impl Database {
      */
     pub fn new() -> Result<Self, DatabaseError> {
         let path = PathBuf::from(DB_PATH);
+        println!("Loading database from {}", path.display());
         let rows = Self::load(&path)?;
+        println!("Loaded {} rows", rows.len());
         Ok(Self {
             path,
             rows: Mutex::new(rows),
@@ -245,7 +249,7 @@ impl Database {
         Ok(file_row.clone())
     }
 
-    /**
+    /**f
      * Update by path: replace the existing entry in the hashmap and
      * persist back to disk via tmp file + rename.
      */
