@@ -23,12 +23,6 @@ fn main() {
         println!("record not found");
     }
 
-    // if let Ok(_) =  {
-    //     println!("inserted");
-    // } else {
-    //     println!("cannot insert it");
-    // }
-
     let insert_result = db.insert(&FileRow::new_for_insert(
         123,
         "/tmp/test".into(),
