@@ -37,7 +37,7 @@ fn main() {
     match insert_result {
         Ok(_) => println!("inserted"),
         Err(e) => {
-            println!("Error: {}", e)
+            println!("Error, cannot insert: {}", e)
         }
     }
 }
