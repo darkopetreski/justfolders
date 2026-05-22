@@ -96,9 +96,7 @@ impl Database {
     /**
      * Insert new item
      */
-    pub fn insert(&self, file_row: &FileRow) -> Result<(), DatabaseError> {
-        //let sql = "INSERT INTO files (inode, path, hash) VALUES (?1, ?2, ?3)";
-
+    pub fn insert(&self, file_row: &FileRow) -> Result<FileRow, DatabaseError> {
         let sql = format!(
             "INSERT INTO {} (inode, path, hash) VALUES (?1, ?2, ?3)",
             CHECKSUM_TABLE
@@ -106,7 +104,15 @@ impl Database {
 
         self.conn
             .execute(&sql, (file_row.inode, &file_row.path, &file_row.hash))?;
-        Ok(())
+
+        let id = self.conn.last_insert_rowid();
+
+        Ok(FileRow {
+            id,
+            inode: file_row.inode,
+            path: file_row.path.clone(),
+            hash: file_row.hash.clone(),
+        })
     }
 
     //pub fn update(&self, inode: i64, path: &str, hash: &str) {}
