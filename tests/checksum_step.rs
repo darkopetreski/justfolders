@@ -105,8 +105,8 @@ fn first_snapshot_hashes_every_file_and_writes_both_artifacts() {
     }
 
     // Global cache exists at the destination root and contains every path.
-    let db_content = fs::read_to_string(dest.path().join("checksums.db")).unwrap();
-    let db = ChecksumDb::load(&db_content).expect("parse checksums.db");
+    let db_content = fs::read_to_string(dest.path().join(".checksums.db")).unwrap();
+    let db = ChecksumDb::load(&db_content).expect("parse .checksums.db");
     assert_eq!(db.len(), 3);
     assert!(db.get("a.txt").is_some());
     assert!(db.get("b.txt").is_some());
@@ -114,7 +114,7 @@ fn first_snapshot_hashes_every_file_and_writes_both_artifacts() {
 
     // No leftover .tmp siblings.
     assert!(!snap.join("sha256sum.tmp").exists());
-    assert!(!dest.path().join("checksums.db.tmp").exists());
+    assert!(!dest.path().join(".checksums.db.tmp").exists());
 
     // End-to-end interop with the stock `sha256sum -c` binary.
     let status = std::process::Command::new("sha256sum")
@@ -213,8 +213,8 @@ fn cache_mirrors_only_the_current_snapshots_files() {
     fs::hard_link(snap1.join("a.txt"), snap2.join("a.txt")).unwrap();
     checksum_step::run(backend.as_ref(), snap2_name).unwrap();
 
-    let db_content = fs::read_to_string(dest.path().join("checksums.db")).unwrap();
-    let db = ChecksumDb::load(&db_content).expect("parse checksums.db");
+    let db_content = fs::read_to_string(dest.path().join(".checksums.db")).unwrap();
+    let db = ChecksumDb::load(&db_content).expect("parse .checksums.db");
     assert_eq!(db.len(), 1, "cache must only carry the current snapshot");
     assert!(db.get("a.txt").is_some());
     assert!(db.get("b.txt").is_none());
@@ -229,7 +229,7 @@ fn malformed_cache_is_treated_as_empty_and_rebuilt() {
 
     let dest = TempDir::new().unwrap();
     fs::write(
-        dest.path().join("checksums.db"),
+        dest.path().join(".checksums.db"),
         "this is not a valid checksum db\n",
     )
     .unwrap();
@@ -245,7 +245,7 @@ fn malformed_cache_is_treated_as_empty_and_rebuilt() {
     assert_eq!(summary.reused, 0);
 
     // The new cache must be well-formed even though the old one wasn't.
-    let db_content = fs::read_to_string(dest.path().join("checksums.db")).unwrap();
+    let db_content = fs::read_to_string(dest.path().join(".checksums.db")).unwrap();
     let db = ChecksumDb::load(&db_content).expect("rebuilt cache must parse");
     assert_eq!(db.len(), 1);
 }
@@ -269,7 +269,7 @@ fn empty_snapshot_produces_empty_artifacts() {
     assert!(sha_file.exists());
     assert_eq!(fs::read_to_string(&sha_file).unwrap(), "");
 
-    let db_content = fs::read_to_string(dest.path().join("checksums.db")).unwrap();
+    let db_content = fs::read_to_string(dest.path().join(".checksums.db")).unwrap();
     // Header-only is a valid, parseable, empty cache.
     let db = ChecksumDb::load(&db_content).unwrap();
     assert!(db.is_empty());

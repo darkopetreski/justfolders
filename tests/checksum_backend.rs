@@ -302,7 +302,7 @@ fn hash_files_hard_linked_files_get_identical_hashes() {
     assert_eq!(hashed[1].hash, SHA256_OF_ABC);
 }
 
-// ── checksums.db (read/write) ───────────────────────────────────────────────
+// ── .checksums.db (read/write) ──────────────────────────────────────────────
 
 #[test]
 fn read_checksum_db_returns_none_when_missing() {
@@ -339,9 +339,9 @@ fn write_checksum_db_leaves_no_tmp_file_behind() {
 
     backend.write_checksum_db("# justfolders-checksum-db v1\n").unwrap();
 
-    assert!(dest.path().join("checksums.db").exists());
+    assert!(dest.path().join(".checksums.db").exists());
     assert!(
-        !dest.path().join("checksums.db.tmp").exists(),
+        !dest.path().join(".checksums.db.tmp").exists(),
         "atomic write must leave no .tmp sibling on success"
     );
 }

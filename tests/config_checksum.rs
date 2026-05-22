@@ -263,7 +263,7 @@ fn backup_with_checksum_true_writes_sha256sum_file() {
         "checksum = true must write a per-snapshot sha256sum file"
     );
     assert!(
-        dest.path().join("checksums.db").exists(),
+        dest.path().join(".checksums.db").exists(),
         "checksum = true must also create the global cache"
     );
 }
@@ -285,7 +285,7 @@ fn backup_with_checksum_false_does_not_write_sha256sum() {
         "checksum = false must skip the per-snapshot sha256sum file"
     );
     assert!(
-        !dest.path().join("checksums.db").exists(),
+        !dest.path().join(".checksums.db").exists(),
         "checksum = false must also skip the global cache"
     );
 }

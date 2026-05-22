@@ -53,7 +53,7 @@ pub struct Config {
     /// snapshot.
     ///
     /// When `true` (default), each backup writes a `sha256sum` manifest
-    /// inside the snapshot directory and maintains a global `checksums.db`
+    /// inside the snapshot directory and maintains a global `.checksums.db`
     /// cache keyed by `(relative_path, inode)` so unchanged files are not
     /// re-hashed.  `justfolders verify` then re-checks every file against
     /// its recorded hash to detect bit-rot.
@@ -531,7 +531,7 @@ pub fn generate_config_content(params: &ConfigGeneratorParams) -> String {
         #
         # When enabled, every backup writes a `sha256sum` file inside the
         # snapshot directory listing one line per file (compatible with
-        # `sha256sum -c`).  A global `checksums.db` cache at the destination
+        # `sha256sum -c`).  A global `.checksums.db` cache at the destination
         # root remembers (relative_path, inode, hash) triples so unchanged
         # files — i.e. those still hard-linked from a previous snapshot —
         # are never re-hashed.  Run `justfolders verify <snapshot>` later

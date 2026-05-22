@@ -11,7 +11,7 @@
 //!
 //! After every successful backup, JustFolders produces two files:
 //!
-//! 1. **`<dest>/checksums.db`** — a global cache mapping
+//! 1. **`<dest>/.checksums.db`** — a global cache mapping
 //!    *path-relative-to-its-snapshot* → `(inode, sha256)`.  Used to avoid
 //!    re-hashing files that are hard-linked from a previous snapshot.  This
 //!    file is purely an optimization cache and is regenerated from scratch
@@ -63,7 +63,7 @@ const SHA256_HEX_LEN: usize = 64;
 /// Errors returned when parsing a cache file.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ChecksumDbError {
-    #[error("malformed checksums.db: {0}")]
+    #[error("malformed .checksums.db: {0}")]
     Malformed(String),
 }
 
@@ -109,7 +109,7 @@ pub struct Plan {
 
 // ── ChecksumDb ───────────────────────────────────────────────────────────────
 
-/// In-memory image of the global checksum cache (`<dest>/checksums.db`).
+/// In-memory image of the global checksum cache (`<dest>/.checksums.db`).
 ///
 /// Keyed by path relative to the snapshot directory (e.g. `etc/hosts`, not
 /// `/dest/2026-05-22-100000/etc/hosts`).
@@ -119,7 +119,7 @@ pub struct ChecksumDb {
 }
 
 impl ChecksumDb {
-    /// Returns an empty cache.  Used when no `checksums.db` exists yet (first
+    /// Returns an empty cache.  Used when no `.checksums.db` exists yet (first
     /// backup) or when the existing file is unreadable (recovery path).
     pub fn empty() -> Self {
         Self::default()
@@ -230,7 +230,7 @@ impl ChecksumDb {
     }
 
     /// Renders the cache as a single string ready to be written to
-    /// `<dest>/checksums.db`.
+    /// `<dest>/.checksums.db`.
     ///
     /// Output is sorted by relative path so the file is byte-stable across
     /// runs (helps `diff`, snapshot tests, and version-control inspection).

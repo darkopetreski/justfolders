@@ -188,7 +188,7 @@ fn remote_hash_files_handles_paths_with_spaces() {
     assert_eq!(hashed[0].inode, 42);
 }
 
-// ── checksums.db (read/write) ───────────────────────────────────────────────
+// ── .checksums.db (read/write) ──────────────────────────────────────────────
 
 #[test]
 fn remote_read_checksum_db_returns_none_when_missing() {
@@ -237,7 +237,7 @@ fn remote_write_checksum_db_is_atomic() {
     let content = backend.read_checksum_db().unwrap().unwrap();
     assert_eq!(content, "second\n");
     assert!(
-        !dest.path().join("checksums.db.tmp").exists(),
+        !dest.path().join(".checksums.db.tmp").exists(),
         "no .tmp sibling should be left on success"
     );
 }

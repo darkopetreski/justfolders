@@ -5,7 +5,7 @@
 //! once at the end of a successful backup, after `tmp/` has been promoted to
 //! a timestamped snapshot directory:
 //!
-//! 1. Load the previous cache from `<dest>/checksums.db` (treat any
+//! 1. Load the previous cache from `<dest>/.checksums.db` (treat any
 //!    parse error as "start from an empty cache" — the cache is just an
 //!    optimization).
 //! 2. List every file in the new snapshot together with its inode
@@ -16,7 +16,7 @@
 //! 5. Write `<snapshot>/sha256sum` in the standard GNU coreutils format so
 //!    `sha256sum -c sha256sum` can verify the snapshot without any
 //!    JustFolders binary.
-//! 6. Rebuild `<dest>/checksums.db` from the merged set of entries so the
+//! 6. Rebuild `<dest>/.checksums.db` from the merged set of entries so the
 //!    cache mirrors the *current* snapshot exactly — pruned paths don't
 //!    accumulate.
 //!
@@ -107,7 +107,7 @@ pub fn run(
     })
 }
 
-/// Reads `<dest>/checksums.db` into memory.
+/// Reads `<dest>/.checksums.db` into memory.
 ///
 /// * Missing file → empty cache (normal on the very first backup).
 /// * Malformed content → empty cache + a single-line warning on stderr.
@@ -121,7 +121,7 @@ fn load_cache(backend: &dyn StorageBackend) -> Result<ChecksumDb, ChecksumStepEr
             Ok(db) => Ok(db),
             Err(e) => {
                 eprintln!(
-                    "warning: checksums.db is malformed ({e}); rebuilding from an empty cache"
+                    "warning: .checksums.db is malformed ({e}); rebuilding from an empty cache"
                 );
                 Ok(ChecksumDb::empty())
             }

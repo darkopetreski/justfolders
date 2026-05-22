@@ -11,7 +11,7 @@ const LATEST_NAME: &str = "latest";
 const LOCK_NAME: &str = "backup.lock";
 
 /// File name of the global checksum cache at the destination root.
-const CHECKSUM_DB_NAME: &str = "checksums.db";
+const CHECKSUM_DB_NAME: &str = ".checksums.db";
 
 /// File name of the per-snapshot checksum file inside each snapshot directory.
 /// Chosen so users can run `cd <snapshot> && sha256sum -c sha256sum`.
@@ -169,11 +169,11 @@ pub trait StorageBackend {
         needs_hashing: &[NeedsHashing],
     ) -> Result<Vec<HashedEntry>, StorageBackendError>;
 
-    /// Read `<dest>/checksums.db`.  Returns `Ok(None)` when the file does
+    /// Read `<dest>/.checksums.db`.  Returns `Ok(None)` when the file does
     /// not exist (first backup, or it was deleted manually).
     fn read_checksum_db(&self) -> Result<Option<String>, StorageBackendError>;
 
-    /// Atomically write `<dest>/checksums.db`: writes to a `.tmp` sibling and
+    /// Atomically write `<dest>/.checksums.db`: writes to a `.tmp` sibling and
     /// renames into place.  An interrupted run leaves either the previous
     /// content or the new one, never a half-written file.
     fn write_checksum_db(&self, content: &str) -> Result<(), StorageBackendError>;
@@ -474,7 +474,7 @@ impl StorageBackend for RemoteBackend {
         zip_hashes(needs_hashing, by_path)
     }
 
-    /// Reads `<dest>/checksums.db` via SSH.  Distinguishes "file does not
+    /// Reads `<dest>/.checksums.db` via SSH.  Distinguishes "file does not
     /// exist" from real errors by using a dedicated exit code (42) inside
     /// the remote shell script — `cat` alone would conflate both cases.
     fn read_checksum_db(&self) -> Result<Option<String>, StorageBackendError> {
@@ -817,7 +817,7 @@ impl StorageBackend for LocalBackend {
         zip_hashes(needs_hashing, by_path)
     }
 
-    /// Reads `<dest>/checksums.db` into a `String`, or returns `Ok(None)` if
+    /// Reads `<dest>/.checksums.db` into a `String`, or returns `Ok(None)` if
     /// the file does not exist (first backup, or it was removed manually).
     fn read_checksum_db(&self) -> Result<Option<String>, StorageBackendError> {
         let path = self.path.join(CHECKSUM_DB_NAME);
@@ -828,8 +828,8 @@ impl StorageBackend for LocalBackend {
         }
     }
 
-    /// Atomic write: `checksums.db.tmp` is written first then renamed over
-    /// `checksums.db`.  On POSIX `rename(2)` is atomic on the same filesystem,
+    /// Atomic write: `.checksums.db.tmp` is written first then renamed over
+    /// `.checksums.db`.  On POSIX `rename(2)` is atomic on the same filesystem,
     /// so a crash mid-write leaves the previous file untouched.
     fn write_checksum_db(&self, content: &str) -> Result<(), StorageBackendError> {
         let final_path = self.path.join(CHECKSUM_DB_NAME);
