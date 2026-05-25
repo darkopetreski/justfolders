@@ -28,8 +28,9 @@ The destination side (local or remote over SSH) is also expected to be Linux.
 |---|---|---|
 | `rsync` | local machine (the machine running justfolders) | Used for all transfers. Any modern version works. |
 | `ssh` | local machine | Required for remote sources or destinations. |
+| `sha256sum` | local machine; remote destination when checksumming or verifying over SSH | GNU coreutils. Used after each backup when `checksum = true` (the default) to build per-snapshot manifests, and by `justfolders verify`. Not needed if you set `checksum = false` and never run `verify`. |
 
-Both are standard tools available by default on any Linux system.
+`rsync`, `ssh`, and `sha256sum` are standard on any Linux system with GNU coreutils installed.
 
 ## Command-line reference
 
