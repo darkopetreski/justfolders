@@ -22,6 +22,22 @@ JustFolders currently runs on **Linux only**. Other Unix-like systems may work b
 
 The destination side (local or remote over SSH) is also expected to be Linux.
 
+## Storage backends
+
+JustFolders stores snapshots as plain directories on a **filesystem**. The
+destination must be a local path or a remote Linux path reachable over
+**SSH/rsync** — the same forms as `src` and `dest` in the config.
+
+**Object storage is not supported.** You cannot point `dest` at bucket-style
+backends such as Amazon S3, Google Cloud Storage, Azure Blob, or similar APIs.
+There is no native integration with object stores; backups always land on a
+real directory tree that `rsync` can write to.
+
+If you use cloud or offsite storage, expose it as a normal filesystem first
+(for example a mounted bucket, NFS, or an SSH-accessible volume on a VM), or
+copy self-contained archives there yourself after a backup (see
+[Creating a self-contained archive](#8-creating-a-self-contained-archive)).
+
 ## Requirements
 
 | Dependency | Where required | Notes |
