@@ -155,6 +155,7 @@ fn do_backup(config: &Config) -> Result<BackupOutcome, BackupError> {
     // the snapshot simply has no `sha256sum` file and `justfolders verify`
     // will refuse to lie about it.
     if config.checksum {
+        println!("\nGenerating checksums for the snapshot");
         match checksum_step::run(layout.backend(), layout.timestamp()) {
             Ok(summary) => println!(
                 "checksum complete: {} file(s) ({} hashed, {} reused from cache)",
