@@ -700,17 +700,16 @@ altered or damaged in transit or on storage.
 
 ```bash
 # Write checksum (example path matches the local create command above)
-md5sum /backups/archives/snapshot-2025-04-15.tar.gz \
-    > /backups/archives/snapshot-2025-04-15.tar.gz.md5
+sha256sum /backups/archives/snapshot-2025-04-15.tar.gz \
+    > /backups/archives/snapshot-2025-04-15.tar.gz.sha256
 
 # Verify later — prints OK or FAILED
-md5sum -c /backups/archives/snapshot-2025-04-15.tar.gz.md5
+sha256sum -c /backups/archives/snapshot-2025-04-15.tar.gz.sha256
 ```
 
-`sha256sum` works the same way if you prefer a stronger hash (`sha256sum file >
-file.sha256`, then `sha256sum -c file.sha256`). These tools are standard on Linux
-and macOS; use the same command when you copy the archive to another host so the
-checksum still matches the bytes you actually stored.
+These tools are standard on Linux and macOS; use the same command when you copy
+the archive to another host so the checksum still matches the bytes you actually
+stored.
 
 > **Note on size:** Because `tar` stores each file independently, the archive
 > will be larger than the snapshot's apparent on-disk usage (which benefits from
@@ -773,7 +772,7 @@ primary backup volume does not automatically invalidate bytes already written in
 an archive you stored **elsewhere**. Used together with offsite or secondary media,
 that improves your odds of recovering a known-good state when the live snapshot
 tree is no longer trustworthy. It is not a substitute for diverse backups and
-periodic verification (for example `md5sum -c` on stored archives — see
+periodic verification (for example `sha256sum -c` on stored archives — see
 [Creating a self-contained archive](#8-creating-a-self-contained-archive)); it is
 an additional layer for milestones you care about most.
 
