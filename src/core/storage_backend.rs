@@ -449,9 +449,24 @@ impl StorageBackend for RemoteBackend {
         parse_find_inodes(&output.stdout)
     }
 
-    /// Pipes the NUL-separated rel-path list to `cd <snap> && xargs -0
-    /// sha256sum` on the remote, then parses the standard sha256sum output
-    /// (same parser the local backend uses — output format is identical).
+    /// Pipes the NUL-separated rel-path list to
+    /// `cd <snap> && xargs -0 -P <ncpus> -n <batch> sha256sum` on the
+    /// remote, then parses the standard sha256sum output (same parser the
+    /// local backend uses — output format is identical).
+    ///
+    /// Parallelism is computed by the *remote* shell so it reflects the
+    /// remote host's CPU count (and its cgroup limits when `nproc` is
+    /// cgroup-aware), not ours:
+    ///   * `NPROC = nproc 2>/dev/null || echo 1` — falls back to serial on
+    ///     hosts where `nproc` is missing (BSDs, stripped Alpine), so we
+    ///     never regress versus the pre-parallel command.
+    ///   * `BATCH = ceil(total / (4 * NPROC))` — same heuristic as
+    ///     [`hash_parallelism_params`], but evaluated in POSIX shell so it
+    ///     sees the right `NPROC`.  `total` is interpolated as a literal
+    ///     because it's only known locally (`needs_hashing.len()`).
+    ///   * `-n BATCH` is required for `-P` to actually fan out; without it
+    ///     xargs packs the whole stdin stream into a single sha256sum
+    ///     invocation and `-P` has nothing to parallelize.
     fn hash_files(
         &self,
         snapshot_name: &str,
@@ -462,12 +477,17 @@ impl StorageBackend for RemoteBackend {
             return Ok(Vec::new());
         }
         let snap_path = self.snapshot_path(snapshot_name);
+        let total = needs_hashing.len();
 
         let mut cmd = self.ssh_command();
         // The `cd` makes sha256sum print paths relative to the snapshot
-        // root, which is the form our cache expects.
+        // root, which is the form our cache expects.  See the doc comment
+        // above for why NPROC/BATCH are computed on the remote.
         cmd.arg(format!(
-            "cd '{snap_path}' && xargs -0 --no-run-if-empty sha256sum"
+            "cd '{snap_path}' && \
+             NPROC=$(nproc 2>/dev/null || echo 1) && \
+             BATCH=$(( ({total} + 4 * NPROC - 1) / (4 * NPROC) )) && \
+             xargs -0 --no-run-if-empty -P \"$NPROC\" -n \"$BATCH\" sha256sum"
         ));
 
         let by_path = run_sha256sum_via_xargs(cmd, needs_hashing)?;
@@ -794,11 +814,22 @@ impl StorageBackend for LocalBackend {
         parse_find_inodes(&output.stdout)
     }
 
-    /// Hashes files locally by piping the path list to `xargs -0 sha256sum`,
-    /// run with the snapshot directory as the working directory.  A single
-    /// subprocess is spawned regardless of the batch size; the input list and
-    /// the output are both NUL-/newline-streamed so memory pressure stays
-    /// flat with the number of files.
+    /// Hashes files locally by piping the path list to
+    /// `xargs -0 -P <ncpus> -n <batch> sha256sum`, run with the snapshot
+    /// directory as the working directory.  The input list and the output
+    /// are both NUL-/newline-streamed so memory pressure stays flat with
+    /// the number of files.
+    ///
+    /// Parallelism: `-P <ncpus>` lets xargs run up to one sha256sum process
+    /// per logical CPU; `-n <batch>` is required for `-P` to actually fan
+    /// out (otherwise xargs packs everything into a single invocation).
+    /// The batch size targets ~4 batches per worker so faster workers can
+    /// keep picking up work when file sizes vary, avoiding long tails.
+    ///
+    /// Output ordering is unaffected: each sha256sum line stays under
+    /// `PIPE_BUF`, so concurrent writes to the shared pipe remain atomic at
+    /// line boundaries, and [`zip_hashes`] re-attaches results in caller
+    /// order via the `rel_path → hash` map.
     fn hash_files(
         &self,
         snapshot_name: &str,
@@ -810,8 +841,16 @@ impl StorageBackend for LocalBackend {
         }
         let snap_root = self.path.join(snapshot_name);
 
+        let (parallelism, batch_size) = hash_parallelism_params(needs_hashing.len());
+
         let mut cmd = Command::new("xargs");
-        cmd.arg("-0").arg("--no-run-if-empty").arg("sha256sum");
+        cmd.arg("-0")
+            .arg("--no-run-if-empty")
+            .arg("-P")
+            .arg(parallelism.to_string())
+            .arg("-n")
+            .arg(batch_size.to_string())
+            .arg("sha256sum");
         cmd.current_dir(&snap_root);
 
         let by_path = run_sha256sum_via_xargs(cmd, needs_hashing)?;
@@ -940,6 +979,27 @@ fn parse_find_inodes(bytes: &[u8]) -> Result<Vec<(u64, String)>, StorageBackendE
         }
     }
     Ok(out)
+}
+
+/// Returns `(parallelism, batch_size)` for the local `xargs -P … -n …`
+/// invocation that drives `sha256sum`.
+///
+/// * `parallelism` = number of logical CPUs reported by the OS, falling
+///   back to 1 when the platform refuses to answer.
+/// * `batch_size`  = `ceil(total / (parallelism * 4))`, clamped to ≥ 1.
+///   Aiming for ~4 batches per worker keeps faster workers busy when file
+///   sizes vary; with too few batches a single slow file would stall an
+///   otherwise idle CPU at the tail of the run.
+///
+/// `total` must be > 0; callers gate the empty case before invoking
+/// sha256sum at all.
+fn hash_parallelism_params(total: usize) -> (usize, usize) {
+    let parallelism = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let target_batches = parallelism.saturating_mul(4).max(1);
+    let batch_size = total.div_ceil(target_batches).max(1);
+    (parallelism, batch_size)
 }
 
 /// Spawns the supplied `cmd` (a fully configured `xargs -0 sha256sum`
