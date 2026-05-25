@@ -197,6 +197,7 @@ Usage: justfolders init [OPTIONS] --config <FILE> --src <SRC> --dest <DEST>
 | `--keep-monthly <N>` | Seed `[policy] keep_monthly`. |
 | `--keep-yearly <N>` | Seed `[policy] keep_yearly`. |
 | `--keep-within-days <N>` | Seed `[policy] keep_within_days` — keep **every** snapshot whose calendar date falls within the last *N* days from “today” when the policy runs (in addition to the `keep_*` counts). |
+| `--no-checksum` | Disable per-snapshot SHA-256 manifests. Writes `checksum = false` into `[default]` so future `backup` runs skip hashing entirely. Default is **on** (`checksum = true`). See [Per-snapshot checksum manifests](#per-snapshot-checksum-manifests) for what is written, when to keep it on, and when to disable it (slow hardware, very large datasets, or a destination already on ZFS/btrfs with block-level checksums). |
 | `--dry-run` | Print the generated INI to stdout instead of writing the file. |
 | `-h`, `--help` | Show help for this subcommand. |
 
@@ -215,7 +216,7 @@ justfolders init --config backup.ini \
 
 Optional flags: `--port`, `--id-rsa`, `--log-dir`, `--exclude-from`, `--disable-logs`,
 `--keep-within-days N`, `--keep-hourly N`, `--keep-daily N`, `--keep-weekly N`,
-`--keep-monthly N`, `--keep-yearly N`, and more.
+`--keep-monthly N`, `--keep-yearly N`, `--no-checksum`, and more.
 Use `--dry-run` to print the generated config to stdout without saving it.
 
 ### 2. Run a backup
@@ -805,11 +806,11 @@ redundancy, repair) silent corruption automatically. This largely eliminates the
 risk for files stored on that filesystem.
 
 On standard filesystems (ext4, xfs, NTFS, network shares) there is no such protection.
-JustFolders does not currently include a built-in scrub command; if bit-rot detection
-matters for your use case, run backups against ZFS or btrfs with checksumming enabled,
-or layer in an external integrity check that suits your workflow (for milestone
-`.tar.gz` copies, checksum the archive file as in
-[Creating a self-contained archive](#8-creating-a-self-contained-archive)).
+For those destinations JustFolders writes a [per-snapshot SHA-256 manifest](#per-snapshot-checksum-manifests)
+so you can detect bit-rot on demand with `justfolders verify` (or the stock
+`sha256sum -c` command); for milestone copies you can additionally checksum a
+[self-contained `.tar.gz` archive](#8-creating-a-self-contained-archive) and store
+it on different media.
 
 **Compression at rest.** You do not need a proprietary backup format to save space on
 disk: enable transparent compression on the dataset or volume that holds your backup
@@ -838,6 +839,119 @@ deduplicating archivers win there, while ZFS/btrfs win on stored size and transp
 For confidentiality on untrusted disks, **ZFS native encryption** (`encryption=on` on the
 dataset) or full-disk encryption (e.g. LUKS) on the backup volume are the usual complements
 to plain-folder snapshots — encryption at the block or volume layer, not inside each file.
+
+### Per-snapshot checksum manifests
+
+After every successful backup, JustFolders records a SHA-256 hash for every file in
+the new snapshot. This is what makes [`justfolders verify`](#verifying-a-snapshot)
+possible and lets you detect [bit-rot](#the-hard-link-and-bit-rot-tradeoff) on
+filesystems that do not checksum blocks themselves (ext4, xfs, NTFS, most network
+shares). The feature is **enabled by default** (`checksum = true`).
+
+#### What gets written
+
+Two artifacts are produced at the end of each `backup` run:
+
+| Path | Format | Purpose |
+|------|--------|---------|
+| `<snapshot>/sha256sum` | GNU coreutils `sha256sum` format — one `<hash>  <relative-path>` line per file. | Lets you verify the snapshot with **any** standard tool: `cd <snapshot> && sha256sum -c sha256sum`. No JustFolders binary required, ever. |
+| `<dest>/.checksums.db` | Internal cache mapping `relative-path → (inode, sha256)`. | Optimization only — reused on the next run so files that have not changed are not re-hashed. Regenerated from scratch each backup, safe to delete (the next run rebuilds it). |
+
+Neither file is treated as a snapshot by the retention engine: `.checksums.db` lives
+at the destination root next to `latest` and `backup.lock/`, and the `sha256sum`
+file sits inside each snapshot directory like any other file.
+
+#### How the cache makes this fast
+
+A naive "hash every file on every backup" would be unworkable on large datasets.
+JustFolders avoids that by relying on the same property that makes hard-link
+deduplication work in the first place:
+
+- Unchanged files across snapshots are **hard-linked** — they share the same inode
+  on disk (see [How hard-link deduplication works](#how-hard-link-deduplication-works)).
+- If a file in the new snapshot has the **same relative path and the same inode**
+  as a row in `.checksums.db`, its hash is reused from the cache — no disk read.
+- Only files that are new or whose inode changed (i.e. rsync wrote a new copy
+  because the source changed) need to be hashed.
+
+In practice, after the first run is amortized, the checksum step on a typical
+incremental backup only hashes whatever rsync just transferred, plus anything
+freshly created. Steady-state cost is roughly proportional to the **delta**, not
+the total dataset.
+
+#### Verifying a snapshot
+
+Two equivalent ways, pick whichever fits:
+
+```bash
+# Using JustFolders (uses the configured backend, including SSH for remote dests)
+justfolders verify --config backup.ini                 # verifies `latest`
+justfolders verify --config backup.ini 2025-04-15-120000
+
+# Using only standard tools — works on any Linux machine, no JustFolders needed
+cd /backups/2025-04-15-120000
+sha256sum -c sha256sum
+```
+
+Either approach reports `OK` or `FAILED` per file. A `FAILED` line means the file
+on disk no longer matches the hash recorded at backup time — almost always bit-rot
+on the underlying media, occasionally accidental modification of the snapshot
+directory.
+
+#### When to disable checksums
+
+The cache makes incremental runs cheap, but there are still cases where you may
+want to skip the checksum step entirely:
+
+- **The first backup of a very large dataset is slow.** The initial run has no
+  cache to reuse, so every file is hashed once. On multi-terabyte sources this
+  can add hours; subsequent runs are fast again.
+- **Low-power hardware** (NAS, ARM SBCs, old CPUs) where the SHA-256 pass
+  noticeably extends each backup window.
+- **The destination already provides block-level checksums** — most importantly
+  **ZFS** and **btrfs** with checksumming enabled (see
+  [A note on ZFS and btrfs](#a-note-on-zfs-and-btrfs) above). These filesystems
+  verify every block on every read and (with redundancy) can repair silent
+  corruption automatically. A per-file SHA-256 manifest on top of that is
+  largely redundant for bit-rot detection: the filesystem will already surface
+  the same errors, earlier and at the block layer. The manifest still has the
+  advantage of letting you re-verify on a *different* machine without ZFS —
+  keep it if that use case matters to you, drop it if not.
+- **High-churn datasets** where most files change between runs (large databases
+  written as a single blob, video editing scratch space, etc.). The cache cannot
+  help when nothing is hard-linked from the previous snapshot, so every run pays
+  close to the first-run cost.
+
+#### How to disable
+
+At `init` time, pass `--no-checksum`:
+
+```bash
+justfolders init --config backup.ini \
+  --src /home/user \
+  --dest tank/backups \
+  --no-checksum
+```
+
+Or, for an existing config, edit the `[default]` section directly:
+
+```ini
+[default]
+src      = /home/user
+dest     = tank/backups
+checksum = false
+```
+
+The next `backup` run will skip the checksum step entirely — no `sha256sum`
+file is written into the new snapshot and `.checksums.db` is not updated.
+Older snapshots that already have a `sha256sum` file are untouched and remain
+verifiable; only new snapshots created while `checksum = false` will lack one.
+`justfolders verify` against such a snapshot returns a clear error
+(`snapshot '…' has no sha256sum file`) rather than silently passing.
+
+You can flip the flag back to `true` at any time; the next backup will
+hash the new snapshot from scratch (no cache to reuse yet) and the cache
+rebuilds itself from there.
 
 ## Pull vs push backups
 
