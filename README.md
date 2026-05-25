@@ -854,7 +854,7 @@ Two artifacts are produced at the end of each `backup` run:
 | Path | Format | Purpose |
 |------|--------|---------|
 | `<snapshot>/sha256sum` | GNU coreutils `sha256sum` format — one `<hash>  <relative-path>` line per file. | Lets you verify the snapshot with **any** standard tool: `cd <snapshot> && sha256sum -c sha256sum`. No JustFolders binary required, ever. |
-| `<dest>/.checksums.db` | Internal cache mapping `relative-path → (inode, sha256)`. | Optimization only — reused on the next run so files that have not changed are not re-hashed. Regenerated from scratch each backup, safe to delete (the next run rebuilds it). |
+| `<dest>/.checksums.db` | Internal cache mapping `relative-path → (inode, sha256)`. | Optimization only — reused on the next run so files that have not changed are not re-hashed. |
 
 Neither file is treated as a snapshot by the retention engine: `.checksums.db` lives
 at the destination root next to `latest` and `backup.lock/`, and the `sha256sum`
