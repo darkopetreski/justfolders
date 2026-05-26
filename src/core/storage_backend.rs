@@ -1027,10 +1027,34 @@ fn run_sha256sum_via_xargs(
         StorageBackendError::Command(format!("failed to spawn sha256sum pipeline: {e}"))
     })?;
 
-    // Pipe the NUL-separated path list to xargs.  Closed on scope exit so
+    // IMPORTANT: drain stdout/stderr concurrently with feeding stdin.
+    //
+    // If we feed all paths first and only then read stdout, the pipeline can
+    // deadlock when `sha256sum` fills the stdout pipe:
+    // `sha256sum` blocks in pipe_write → `xargs` stops reading stdin → we block
+    // trying to write more paths.
+    let mut child_stdout = child.stdout.take().ok_or_else(|| {
+        StorageBackendError::Command("sha256sum pipeline has no stdout".to_string())
+    })?;
+    let mut child_stderr = child.stderr.take().ok_or_else(|| {
+        StorageBackendError::Command("sha256sum pipeline has no stderr".to_string())
+    })?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let res = std::io::Read::read_to_end(&mut child_stdout, &mut buf);
+        (res, buf)
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let res = std::io::Read::read_to_end(&mut child_stderr, &mut buf);
+        (res, buf)
+    });
+
+    // Pipe the NUL-separated path list to xargs. Dropping stdin closes it so
     // xargs sees EOF and runs sha256sum.
     {
-        let stdin = child.stdin.as_mut().ok_or_else(|| {
+        let mut stdin = child.stdin.take().ok_or_else(|| {
             StorageBackendError::Command("sha256sum pipeline has no stdin".to_string())
         })?;
         for nh in needs_hashing {
@@ -1039,16 +1063,27 @@ fn run_sha256sum_via_xargs(
         }
     }
 
-    let output = child.wait_with_output()?;
-    if !output.status.success() {
+    let status = child.wait()?;
+
+    let (stdout_res, stdout) = stdout_handle
+        .join()
+        .map_err(|_| StorageBackendError::Command("sha256sum stdout reader panicked".to_string()))?;
+    let (stderr_res, stderr) = stderr_handle
+        .join()
+        .map_err(|_| StorageBackendError::Command("sha256sum stderr reader panicked".to_string()))?;
+
+    stdout_res?;
+    stderr_res?;
+
+    if !status.success() {
         return Err(StorageBackendError::Command(format!(
             "sha256sum pipeline exited {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
+            status,
+            String::from_utf8_lossy(&stderr).trim()
         )));
     }
 
-    parse_sha256sum_output(&output.stdout)
+    parse_sha256sum_output(&stdout)
 }
 
 /// Parses the standard GNU coreutils `sha256sum` output format into a
