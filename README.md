@@ -897,6 +897,11 @@ the total dataset.
 
 #### Verifying a snapshot
 
+> **Note:** Verification reads and re-hashes every file in the snapshot.
+> Depending on the size of the repository this can be a slow operation — expect
+> roughly the same wall-clock time as the initial backup run on the same
+> hardware.
+
 Two equivalent ways, pick whichever fits:
 
 ```bash
