@@ -10,6 +10,14 @@ const IN_PROGRESS_NAME: &str = "tmp";
 const LATEST_NAME: &str = "latest";
 const LOCK_NAME: &str = "backup.lock";
 
+/// Suffix appended to a snapshot directory while it is being deleted.
+///
+/// Renaming to `<name>-expiring` before removal means that if the process is
+/// killed mid-deletion the directory is no longer visible as a valid snapshot
+/// (it won't match the `YYYY-MM-DD-HHMMSS` filter) and can be cleaned up on
+/// the next run without any risk of confusing the retention logic.
+const EXPIRING_SUFFIX: &str = "-expiring";
+
 /// File name of the global checksum cache at the destination root.
 const CHECKSUM_DB_NAME: &str = ".checksums.db";
 
@@ -301,10 +309,23 @@ impl StorageBackend for RemoteBackend {
         Ok(snapshots)
     }
 
-    /// Deletes the snapshot directory on the remote host via `rm -rf` over SSH.
+    /// Deletes the snapshot directory on the remote host using a two-step rename-then-remove.
+    ///
+    /// The directory is first renamed to `<name>-expiring` via `mv`, then
+    /// removed with `rm -rf` — both over the same SSH connection.  If the
+    /// process is terminated between the two steps the renamed directory is
+    /// left on disk; it no longer matches the `YYYY-MM-DD-HHMMSS` filter so
+    /// retention logic ignores it, and it can be cleaned up manually or by a
+    /// future housekeeping pass.
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError> {
         validate_snapshot_name(name)?;
-        let cmd = format!("rm -rf '{}/{}'", self.path, name);
+        let expiring_name = format!("{name}{EXPIRING_SUFFIX}");
+        let cmd = format!(
+            "mv '{path}/{name}' '{path}/{expiring}' && rm -rf '{path}/{expiring}'",
+            path = self.path,
+            name = name,
+            expiring = expiring_name,
+        );
         let output = self.ssh_command().arg(&cmd).output()?;
         if !output.status.success() {
             return Err(StorageBackendError::Ssh(format!(
@@ -688,7 +709,13 @@ impl StorageBackend for LocalBackend {
         Ok(snapshots)
     }
 
-    /// Removes the snapshot directory using [`std::fs::remove_dir_all`].
+    /// Deletes a snapshot directory using a two-step rename-then-remove.
+    ///
+    /// The directory is first renamed to `<name>-expiring` before it is
+    /// removed.  If the process is terminated between the two steps the
+    /// renamed directory is simply left on disk; it no longer matches the
+    /// `YYYY-MM-DD-HHMMSS` filter so retention logic ignores it, and it can
+    /// be cleaned up manually or by a future housekeeping pass.
     fn delete_snapshot(&self, name: &str) -> Result<(), StorageBackendError> {
         validate_snapshot_name(name)?;
         let path = self.path.join(name);
@@ -697,7 +724,9 @@ impl StorageBackend for LocalBackend {
         if !path.starts_with(&self.path) {
             return Err(StorageBackendError::InvalidSnapshotName(name.to_string()));
         }
-        std::fs::remove_dir_all(path)?;
+        let expiring_path = self.path.join(format!("{name}{EXPIRING_SUFFIX}"));
+        std::fs::rename(&path, &expiring_path)?;
+        std::fs::remove_dir_all(&expiring_path)?;
         Ok(())
     }
 
