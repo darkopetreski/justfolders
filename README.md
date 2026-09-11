@@ -12,6 +12,14 @@ No agents.
 No proprietary formats.
 Just folders.
 
+## Download
+
+Pre-built Linux binaries are attached to each [GitHub release](https://github.com/TODO/justfolders/releases).
+
+| Platform | Download |
+|----------|----------|
+| Linux x86-64 | [justfolders-x86_64-unknown-linux-gnu](https://TODO) |
+
 ## Status
 
 Early release. The CLI and config format may change before 1.0. Always test your backups by performing a real restore from time to time.
