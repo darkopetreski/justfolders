@@ -20,6 +20,26 @@ Pre-built Linux binaries are attached to each [GitHub release](https://github.co
 |----------|----------|
 | Linux x86-64 | [justfolders-x86_64-unknown-linux-gnu](https://TODO) |
 
+## Install
+
+JustFolders is a **single binary**. There is no installer, package, or runtime
+dependency beyond the tools listed in [Requirements](#requirements).
+
+Download the release binary, make it executable, and run it directly:
+
+```bash
+chmod +x justfolders
+./justfolders --help
+```
+
+To use it from anywhere on the system, copy it onto your `PATH` (for example
+`/usr/local/bin`, or `/usr/bin` if you prefer):
+
+```bash
+sudo cp justfolders /usr/local/bin/
+justfolders --help
+```
+
 ## Status
 
 Early release. The CLI and config format may change before 1.0. Always test your backups by performing a real restore from time to time.
