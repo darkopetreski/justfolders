@@ -14,11 +14,11 @@ Just folders.
 
 ## Download
 
-Pre-built Linux binaries are attached to each [GitHub release](https://github.com/TODO/justfolders/releases).
+Pre-built Linux binaries are attached to each [GitHub release](https://github.com/darkopetreski/justfolders/releases).
 
 | Platform | Download |
 |----------|----------|
-| Linux x86-64 | [justfolders-x86_64-unknown-linux-gnu](https://TODO) |
+| Linux x86-64 | [justfolders](https://github.com/darkopetreski/justfolders/releases/download/v0.1.0/justfolders) |
 
 ## Install
 
