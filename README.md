@@ -230,6 +230,12 @@ Exit status is `0` when every file matches its recorded hash, and non-zero if
 any file mismatches, the snapshot has no `sha256sum` file, or an I/O / SSH
 error occurs. Per-file `OK` / `FAILED` lines are printed by `sha256sum` itself.
 
+**Runtime.** Unlike the post-backup checksum step — which reuses hashes from
+`.checksums.db` for unchanged hard-linked files — `verify` re-reads and
+re-hashes **every** file in the snapshot from disk. On large datasets this can
+take a long time (comparable to hashing the whole tree once). Plan accordingly
+if you run it from cron or over a slow remote destination.
+
 ### `init` — generate a new config file
 
 Creates a starter `.ini` from command-line arguments. **Required:** `--config`,
