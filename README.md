@@ -20,6 +20,14 @@ Pre-built Linux binaries are attached to each [GitHub release](https://github.co
 |----------|----------|
 | Linux x86-64 | [justfolders](https://github.com/darkopetreski/justfolders/releases/download/v0.1.0/justfolders) |
 
+The pre-built binary targets **`x86_64-unknown-linux-gnu`**: 64-bit x86 Linux
+linked against **glibc**. It runs on common distributions such as Ubuntu,
+Debian, Fedora, RHEL/CentOS, openSUSE, and Arch.
+
+It does **not** run on **Alpine Linux** (or other musl-based systems) out of
+the box. Build from source with `--target x86_64-unknown-linux-musl` if you
+need that, or wait for a musl release binary.
+
 ## Install
 
 JustFolders is a **single binary**. There is no installer, package, or runtime
