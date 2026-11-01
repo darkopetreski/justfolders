@@ -63,6 +63,7 @@ JustFolders is invoked as `justfolders <COMMAND> [OPTIONS]`. Use `-h` / `--help`
 ```bash
 justfolders --help              # list commands and global options
 justfolders backup --help       # backup-specific options
+justfolders verify --help       # verify-specific options
 justfolders init --help         # init-specific options
 ```
 
@@ -80,6 +81,7 @@ Commands:
   snapshots    List all available snapshots at the destination
   init         Generate a config file from provided arguments
   test-notify  Send a test email using the [notify] SMTP settings
+  verify       Verify a snapshot by running sha256sum -c inside it
   help         Print this message or the help of the given subcommand(s)
 
 Options:
@@ -193,6 +195,40 @@ Options:
 |--------|---------|
 | `--config <FILE>` | **Required.** Config file containing a `[notify]` section. If the section is missing the command fails with a clear error so you know notifications are not configured yet. |
 | `-h`, `--help` | Show help for this subcommand. |
+
+### `verify` — verify a snapshot
+
+Re-checks every file recorded in a snapshot’s `sha256sum` manifest against
+the current on-disk contents (runs `sha256sum -c sha256sum` inside the
+snapshot directory). Works for local destinations and remote ones over SSH.
+Requires that the snapshot was created with `checksum = true` (the default);
+see [Per-snapshot checksum manifests](#per-snapshot-checksum-manifests).
+
+```text
+Usage: justfolders verify --config <FILE> [SNAPSHOT]
+
+Arguments:
+  [SNAPSHOT]  Snapshot to verify (YYYY-MM-DD-HHMMSS, or latest) [default: latest]
+
+Options:
+      --config <FILE>  Path to the config file
+  -h, --help           Print help
+```
+
+| Option / argument | Meaning |
+|-------------------|---------|
+| `--config <FILE>` | **Required.** Same config as `backup` — uses `dest` (and SSH settings) from `[default]`. |
+| `SNAPSHOT` | Optional. Timestamp `YYYY-MM-DD-HHMMSS`, or `latest`. Defaults to `latest`. |
+| `-h`, `--help` | Show help for this subcommand. |
+
+```bash
+justfolders verify --config backup.ini                 # verifies latest
+justfolders verify --config backup.ini 2025-04-15-120000
+```
+
+Exit status is `0` when every file matches its recorded hash, and non-zero if
+any file mismatches, the snapshot has no `sha256sum` file, or an I/O / SSH
+error occurs. Per-file `OK` / `FAILED` lines are printed by `sha256sum` itself.
 
 ### `init` — generate a new config file
 
@@ -687,7 +723,8 @@ time — no dependency on any other snapshot, safe to move to cold storage, an
 external drive, or a cloud bucket.
 
 JustFolders does not include an `archive` command — only `backup`, `snapshots`,
-`init`, and `test-notify` (see [Command-line reference](#command-line-reference)). To freeze a snapshot for
+`init`, `test-notify`, and `verify` (see
+[Command-line reference](#command-line-reference)). To freeze a snapshot for
 long-term storage you create a normal compressed tarball yourself with `tar`, as
 below. The archive lives beside your snapshots (for example under `archives/`);
 retention ignores it because the filename is not a snapshot timestamp.
